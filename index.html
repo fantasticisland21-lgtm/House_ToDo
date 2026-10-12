@@ -109,6 +109,7 @@
         <div class="ctrl2">
           <input id="cycleCount" type="number" min="1" step="1" value="1" required>
           <select id="cycleUnit">
+            <option value="f">毎月（数字＝日）</option>
             <option value="d">日</option>
             <option value="w" selected>週間</option>
             <option value="m">ヶ月</option>
@@ -166,6 +167,7 @@
       <div class="row">
         <input id="newCycleCount" type="number" min="1" step="1">
         <select id="newCycleUnit">
+          <option value="f">毎月（数字＝日）</option>
           <option value="d">日</option>
           <option value="w">週間</option>
           <option value="m">ヶ月</option>
@@ -271,7 +273,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.2";             // 変更するたびに上げる
+const APP_VERSION = "2.3";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -310,6 +312,19 @@ function addPeriod(base, unit, count) {
   return new Date(first.getFullYear(), first.getMonth(), Math.min(base.getDate(), last));
 }
 
+// 毎月○日の期日：基準日より後で、最初に来る「○日」（月末を超える日は末日にする）
+function nextFixed(after, day) {
+  let y = after.getFullYear();
+  let m = after.getMonth();
+  for (let i = 0; i < 2; i++) {
+    const last = new Date(y, m + 1, 0).getDate();
+    const cand = new Date(y, m, Math.min(day, last));
+    if (cand > after) return cand;
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+}
+
 // 状態判定：計測開始日を基準に、1周期後以上で「そろそろ」、2周期後以上で「やばい」
 // 一時停止中は、停止した時点の経過日数を保持する
 function judge(item) {
@@ -318,8 +333,15 @@ function judge(item) {
   }
   const base = parse(item.startDate || item.lastDone);
   const t = today();
-  const next1 = addPeriod(base, item.cycleUnit, item.cycleCount);
-  const next2 = addPeriod(base, item.cycleUnit, item.cycleCount * 2);
+  let next1, next2;
+  if (item.cycleUnit === "f") {
+    // 毎月○日：実施日に関係なく、決まった日が期日になる
+    next1 = nextFixed(base, item.cycleCount);
+    next2 = nextFixed(next1, item.cycleCount);
+  } else {
+    next1 = addPeriod(base, item.cycleUnit, item.cycleCount);
+    next2 = addPeriod(base, item.cycleUnit, item.cycleCount * 2);
+  }
   const days = Math.round((t - base) / DAY);
   let key = "normal";
   if (t >= next2) key = "danger";
@@ -331,6 +353,11 @@ const ICON = { danger: "🔴", soon: "🟡", normal: "⚪", paused: "⏸️" };
 const LABEL = { danger: "やばい", soon: "そろそろ", normal: "通常", paused: "一時停止中" };
 const UNIT = { d: "日", w: "週間", m: "ヶ月", y: "年" };
 const ORDER = ["danger", "soon", "normal", "paused"];
+
+// 周期の表示（「毎月」は、数字を日付として扱う）
+function cycleText(it) {
+  return it.cycleUnit === "f" ? `毎月${it.cycleCount}日` : `${it.cycleCount}${UNIT[it.cycleUnit]}`;
+}
 
 // ===== 画面の状態 =====
 let items = [];
@@ -702,7 +729,7 @@ function renderDetail() {
   $("dName").textContent = it.name;
   $("dStatus").textContent = `${ICON[j.key]} ${LABEL[j.key]}`;
   $("dDays").textContent = `${j.days}日`;
-  $("dCycle").textContent = `${it.cycleCount}${UNIT[it.cycleUnit]}`;
+  $("dCycle").textContent = cycleText(it);
   $("dLast").textContent = showDate(it.lastDone);
 
   // 枠は常に表示し、未設定のときは「未設定」と出す
@@ -806,8 +833,9 @@ $("cancelCycleBtn").addEventListener("click", () => {
 
 $("saveCycleBtn").addEventListener("click", async () => {
   const count = Number($("newCycleCount").value);
-  if (!Number.isInteger(count) || count < 1) {
-    $("detailMsg").textContent = "周期は1以上の整数で入力してください";
+  const unit = $("newCycleUnit").value;
+  if (!Number.isInteger(count) || count < 1 || (unit === "f" && count > 31)) {
+    $("detailMsg").textContent = "周期は1以上の整数で入力してください（毎月の日付は1〜31）";
     return;
   }
   const ok = await updateItem({ cycleCount: count, cycleUnit: $("newCycleUnit").value });
@@ -922,7 +950,11 @@ $("addForm").addEventListener("submit", async e => {
   const name = $("name").value.trim();
   const count = Number($("cycleCount").value);
   if (!name) { msg.textContent = "項目名を入力してください"; return; }
-  if (!Number.isInteger(count) || count < 1) { msg.textContent = "周期は1以上の整数で入力してください"; return; }
+  const unit = $("cycleUnit").value;
+  if (!Number.isInteger(count) || count < 1 || (unit === "f" && count > 31)) {
+    msg.textContent = "周期は1以上の整数で入力してください（毎月の日付は1〜31）";
+    return;
+  }
 
   const lastDone = $("lastDone").value;
   const frameFields = {};

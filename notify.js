@@ -38,10 +38,32 @@ function addPeriod(base, unit, count) {
   return Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(b.getUTCDate(), last));
 }
 
+// 毎月○日の期日：基準日より後で、最初に来る「○日」（月末を超える日は末日にする）
+function nextFixed(afterMs, day) {
+  const a = new Date(afterMs);
+  let y = a.getUTCFullYear();
+  let m = a.getUTCMonth();
+  for (let i = 0; i < 2; i++) {
+    const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const cand = Date.UTC(y, m, Math.min(day, last));
+    if (cand > afterMs) return cand;
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+}
+
 // アプリ本体と同じ判定：1周期後で「そろそろ」、2周期後で「やばい」
 function judge(item, t) {
   if (item.paused) return "paused";
   const base = parse(item.startDate || item.lastDone);
+  if (item.cycleUnit === "f") {
+    // 毎月○日：実施日に関係なく、決まった日が期日になる
+    const d1 = nextFixed(base, item.cycleCount);
+    const d2 = nextFixed(d1, item.cycleCount);
+    if (t >= d2) return "danger";
+    if (t >= d1) return "soon";
+    return "normal";
+  }
   const n1 = addPeriod(base, item.cycleUnit, item.cycleCount);
   const n2 = addPeriod(base, item.cycleUnit, item.cycleCount * 2);
   if (t >= n2) return "danger";
