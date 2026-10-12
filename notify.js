@@ -70,6 +70,7 @@ async function main() {
     // 同じ状態で知らせ済みなら何もしない
     if (seen === key) continue;
 
+    let ok = 0; // 実際に届いた数（0なら、知らせ済みにしない）
     if (tokens.length) {
       const res = await messaging.sendEachForMulticast({
         tokens,
@@ -80,6 +81,7 @@ async function main() {
         }
       });
       sent += res.successCount;
+      ok = res.successCount;
 
       // 無効になった端末の登録は削除する
       res.responses.forEach((r, i) => {
@@ -92,7 +94,7 @@ async function main() {
     }
 
     // 知らせた状態を保存して、次回の重複を防ぐ
-    await doc.ref.update({ notifiedKey: key });
+    if (ok > 0) await doc.ref.update({ notifiedKey: key });
   }
   console.log(`送信した通知の数: ${sent}`);
 }
