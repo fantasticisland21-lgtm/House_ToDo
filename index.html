@@ -58,9 +58,14 @@
   .spacer { flex: 1; }
   .ver { font-size: 12px; color: var(--sub); font-weight: 400; }
   /* 入力欄をコンパクトに */
-  #addForm label { margin-top: 4px; }
-  #addForm input, #addForm select { font-size: 16px; padding: 8px 10px; margin: 2px 0 4px; }
-  #addForm .row > label { flex: 1; }
+  /* 項目名などは「ラベル → 入力欄」を横に並べ、はみ出さないようにする */
+  #addForm label { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 15px; color: var(--sub); }
+  #addForm label input, #addForm label select,
+  #addForm .row input, #addForm .row select {
+    flex: 1; min-width: 0; width: 100%; margin: 0; font-size: 16px; padding: 8px 10px;
+  }
+  #addForm input[type=date] { -webkit-appearance: none; appearance: none; }
+  #addForm .row { margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -93,8 +98,8 @@
       <label>項目名
         <input id="name" maxlength="50" placeholder="例：お風呂掃除" required>
       </label>
-      <label>周期</label>
       <div class="row">
+        <span style="flex:none;width:4.5em;color:var(--sub);font-size:15px">周期</span>
         <input id="cycleCount" type="number" min="1" step="1" value="1" required>
         <select id="cycleUnit">
           <option value="d">日</option>
@@ -103,7 +108,7 @@
           <option value="y">年</option>
         </select>
       </div>
-      <div class="row">
+      <div>
         <label>カテゴリ
           <select id="add-cat"></select>
         </label>
@@ -234,7 +239,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "0.6"; // 変更するたびに上げる
+const APP_VERSION = "0.7"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
