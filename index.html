@@ -68,7 +68,7 @@
   #addForm .row { margin-top: 6px; }
   /* 入力欄の位置と幅をそろえる：ラベルは固定幅、入力欄は残りを埋める */
   #addForm .field { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-  #addForm .flabel { flex: none; width: 8.5em; font-size: 14px; color: var(--sub); white-space: nowrap; }
+  #addForm .flabel { flex: none; width: 5.5em; font-size: 14px; color: var(--sub); white-space: nowrap; }
   #addForm .field > input, #addForm .field > select, #addForm .field > .ctrl2 { flex: 1; min-width: 0; }
   #addForm .field > input, #addForm .field > select { width: 100%; margin: 0; font-size: 16px; padding: 8px 10px; }
   #addForm .ctrl2 { display: flex; gap: 8px; }
@@ -127,7 +127,7 @@
         <select id="add-target"></select>
       </div>
       <div class="field">
-        <span class="flabel">最後に実施した日</span>
+        <span class="flabel">最終実施日</span>
         <input id="lastDone" type="date" required>
       </div>
       <button type="submit">＋ 追加</button>
@@ -216,6 +216,7 @@
     <div id="history"></div>
     <button id="moreBtn" class="sub" hidden>もっと見る</button>
 
+    <button id="deleteBtn" class="danger" style="width:100%;margin-top:24px">🗑 この項目を削除</button>
     <button id="backBtn" class="wide">← 一覧に戻る</button>
   </section>
 
@@ -250,7 +251,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "0.9"; // 変更するたびに上げる
+const APP_VERSION = "1.0"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -693,6 +694,24 @@ $("pauseBtn").addEventListener("click", async () => {
 $("resumeBtn").addEventListener("click", async () => {
   if (!confirm("再開しますか？")) return;
   await updateItem({ paused: false, pausedDays: 0, startDate: fmt(today()) });
+});
+
+// 項目の削除：実施履歴もまとめて消す（元に戻せない）
+$("deleteBtn").addEventListener("click", async () => {
+  const it = items.find(x => x.id === currentId);
+  if (!it) return;
+  if (!confirm(`「${it.name}」を削除しますか？\n実施履歴もすべて消えて、元に戻せません。`)) return;
+  try {
+    const hist = await db.collection(HIST).where("itemId", "==", it.id).get();
+    const batch = db.batch();
+    hist.docs.forEach(d => batch.delete(d.ref));
+    batch.delete(db.collection(COL).doc(it.id));
+    await batch.commit();
+    closeDetail();
+  } catch (err) {
+    console.error(err);
+    $("detailMsg").textContent = "削除できませんでした。通信状態を確認して、もう一度押してください。";
+  }
 });
 
 // 項目名の変更
