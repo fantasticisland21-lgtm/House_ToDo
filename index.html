@@ -66,6 +66,13 @@
   }
   #addForm input[type=date] { -webkit-appearance: none; appearance: none; }
   #addForm .row { margin-top: 6px; }
+  /* 入力欄の位置と幅をそろえる：ラベルは固定幅、入力欄は残りを埋める */
+  #addForm .field { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  #addForm .flabel { flex: none; width: 6.5em; font-size: 15px; color: var(--sub); }
+  #addForm .field > input, #addForm .field > select, #addForm .field > .ctrl2 { flex: 1; min-width: 0; }
+  #addForm .field > input, #addForm .field > select { width: 100%; margin: 0; font-size: 16px; padding: 8px 10px; }
+  #addForm .ctrl2 { display: flex; gap: 8px; }
+  #addForm .ctrl2 > * { flex: 1; min-width: 0; width: auto; margin: 0; font-size: 16px; padding: 8px 10px; }
 </style>
 </head>
 <body>
@@ -95,30 +102,34 @@
     </div>
 
     <form id="addForm">
-      <label>項目名
+      <div class="field">
+        <span class="flabel">項目名</span>
         <input id="name" maxlength="50" placeholder="例：お風呂掃除" required>
-      </label>
-      <div class="row">
-        <span style="flex:none;width:4.5em;color:var(--sub);font-size:15px">周期</span>
-        <input id="cycleCount" type="number" min="1" step="1" value="1" required>
-        <select id="cycleUnit">
-          <option value="d">日</option>
-          <option value="w" selected>週間</option>
-          <option value="m">ヶ月</option>
-          <option value="y">年</option>
-        </select>
       </div>
-      <div>
-        <label>カテゴリ
-          <select id="add-cat"></select>
-        </label>
-        <label>対象
-          <select id="add-target"></select>
-        </label>
+      <div class="field">
+        <span class="flabel">周期</span>
+        <div class="ctrl2">
+          <input id="cycleCount" type="number" min="1" step="1" value="1" required>
+          <select id="cycleUnit">
+            <option value="d">日</option>
+            <option value="w" selected>週間</option>
+            <option value="m">ヶ月</option>
+            <option value="y">年</option>
+          </select>
+        </div>
       </div>
-      <label>最後に実施した日
+      <div class="field">
+        <span class="flabel">カテゴリ</span>
+        <select id="add-cat"></select>
+      </div>
+      <div class="field">
+        <span class="flabel">対象</span>
+        <select id="add-target"></select>
+      </div>
+      <div class="field">
+        <span class="flabel">最後に実施した日</span>
         <input id="lastDone" type="date" required>
-      </label>
+      </div>
       <button type="submit">＋ 追加</button>
       <p id="addMsg" class="msg"></p>
     </form>
@@ -239,7 +250,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "0.7"; // 変更するたびに上げる
+const APP_VERSION = "0.8"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
