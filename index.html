@@ -44,7 +44,8 @@
   .meta { color: var(--sub); font-size: 14px; }
   .unset { color: var(--sub); }
   .tag { font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
-  .info > div { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .info > div { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .info .label + span { flex: 1; }
   .info .label { color: var(--sub); display: inline-block; width: 6em; }
   .hist { padding: 8px 0; border-bottom: 1px solid var(--line); }
   .editBox { padding: 8px 0; }
@@ -117,7 +118,7 @@
   <section id="detailView" hidden>
     <div class="row">
       <h1 id="dName" style="flex:1"></h1>
-      <button id="editNameBtn" class="sub small" style="flex:0">名前変更</button>
+      <button id="editNameBtn" class="sub small" style="flex:none;white-space:nowrap">名前変更</button>
     </div>
     <div id="editName" class="editBox" hidden>
       <input id="newName" maxlength="50">
@@ -130,8 +131,8 @@
       <div><span class="label">状態</span><span id="dStatus"></span></div>
       <div><span class="label">経過日数</span><span id="dDays"></span></div>
       <div><span class="label">周期</span><span id="dCycle"></span></div>
-      <div id="row-cat"><span class="label">カテゴリ</span><span id="val-cat"></span></div>
-      <div id="row-target"><span class="label">対象</span><span id="val-target"></span></div>
+      <div id="row-cat"><span class="label">カテゴリ</span><span id="val-cat"></span><button id="open-cat" class="sub small">変更</button></div>
+      <div id="row-target"><span class="label">対象</span><span id="val-target"></span><button id="open-target" class="sub small">変更</button></div>
       <div>
         <span class="label">最終実施日</span><span id="dLast"></span>
         <button id="editLastBtn" class="sub small">変更</button>
@@ -146,7 +147,6 @@
       </div>
     </div>
 
-    <button id="open-cat" class="sub" style="margin-top:8px">🏷️ カテゴリを設定・変更</button>
     <div id="edit-cat" class="editBox" hidden>
       <select id="new-cat"></select>
       <div class="actions">
@@ -155,7 +155,6 @@
       </div>
     </div>
 
-    <button id="open-target" class="sub" style="margin-top:8px">🏷️ 対象を設定・変更</button>
     <div id="edit-target" class="editBox" hidden>
       <select id="new-target"></select>
       <div class="actions">
