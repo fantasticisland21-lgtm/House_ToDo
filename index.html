@@ -22,6 +22,7 @@
     width: 100%; font-size: 17px; padding: 12px; margin: 4px 0 8px;
     border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--text);
   }
+  textarea { width: 100%; font-size: 16px; padding: 10px; margin: 4px 0 8px; border: 1px solid var(--line); border-radius: 8px; font-family: inherit; color: var(--text); resize: vertical; }
   .row { display: flex; gap: 8px; align-items: center; }
   .row > * { flex: 1; }
   button {
@@ -42,16 +43,9 @@
   }
   .item .days { color: var(--sub); font-size: 15px; white-space: nowrap; }
   .meta { color: var(--sub); font-size: 14px; }
-  .unset { color: var(--sub); }
-  textarea { width: 100%; font-size: 16px; padding: 10px; margin: 4px 0 8px; border: 1px solid var(--line); border-radius: 8px; font-family: inherit; color: var(--text); resize: vertical; }
-  .memo { white-space: pre-wrap; background: #fafaf8; border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 15px; }
-  .notice { background: #fbf6e9; border-radius: 8px; padding: 10px 12px; margin: 8px 0 4px; }
-  .noticeTitle { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-  .noticeRow { padding: 6px 0; cursor: pointer; }
-  .tag { font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
   .info > div { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
-  .info .label + span { flex: 1; }
   .info .label { color: var(--sub); display: inline-block; width: 6em; }
+  .info .label + span { flex: 1; }
   .hist { padding: 8px 0; border-bottom: 1px solid var(--line); }
   .editBox { padding: 8px 0; }
   .listRow { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -62,22 +56,20 @@
   .actions > #doneBtn, .actions > #resumeBtn { flex: 2; }
   .spacer { flex: 1; }
   .ver { font-size: 12px; color: var(--sub); font-weight: 400; }
-  /* 入力欄をコンパクトに */
-  /* 項目名などは「ラベル → 入力欄」を横に並べ、はみ出さないようにする */
-  #addForm label { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 15px; color: var(--sub); }
-  #addForm label input, #addForm label select,
-  #addForm .row input, #addForm .row select {
-    flex: 1; min-width: 0; width: 100%; margin: 0; font-size: 16px; padding: 8px 10px;
-  }
-  #addForm input[type=date] { -webkit-appearance: none; appearance: none; }
-  #addForm .row { margin-top: 6px; }
-  /* 入力欄の位置と幅をそろえる：ラベルは固定幅、入力欄は残りを埋める */
+  .unset { color: var(--sub); }
+  .tag { font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
+  .notice { background: #fbf6e9; border-radius: 8px; padding: 10px 12px; margin: 8px 0 4px; }
+  .noticeTitle { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .noticeRow { padding: 6px 0; cursor: pointer; }
+  .memo { white-space: pre-wrap; background: #fafaf8; border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 15px; }
+  /* 追加画面：「ラベル → 入力欄」を横に並べ、位置と幅をそろえる */
   #addForm .field { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   #addForm .flabel { flex: none; width: 5.5em; font-size: 14px; color: var(--sub); white-space: nowrap; }
-  #addForm .field > input, #addForm .field > select, #addForm .field > .ctrl2 { flex: 1; min-width: 0; }
-  #addForm .field > input, #addForm .field > select { width: 100%; margin: 0; font-size: 16px; padding: 8px 10px; }
+  #addForm .field > input, #addForm .field > select, #addForm .field > textarea, #addForm .field > .ctrl2 { flex: 1; min-width: 0; }
+  #addForm .field > input, #addForm .field > select, #addForm .field > textarea { width: 100%; margin: 0; font-size: 16px; padding: 8px 10px; }
   #addForm .ctrl2 { display: flex; gap: 8px; }
   #addForm .ctrl2 > * { flex: 1; min-width: 0; width: auto; margin: 0; font-size: 16px; padding: 8px 10px; }
+  #addForm input[type=date] { -webkit-appearance: none; appearance: none; }
 </style>
 </head>
 <body>
@@ -103,7 +95,6 @@
     <div class="row">
       <h1 style="flex:1">やることリスト <small id="appVer" class="ver"></small></h1>
       <button id="settingsBtn" class="sub" style="flex:none;width:auto;margin:0">設定</button>
-      <!-- ログアウトは設定画面へ移動 -->
     </div>
 
     <div id="notice" class="notice" hidden></div>
@@ -161,16 +152,14 @@
         <button id="saveNameBtn">保存</button>
       </div>
     </div>
+
     <div class="info">
       <div><span class="label">状態</span><span id="dStatus"></span></div>
       <div><span class="label">経過日数</span><span id="dDays"></span></div>
       <div><span class="label">周期</span><span id="dCycle"></span><button id="editCycleBtn" class="sub small">変更</button></div>
       <div id="row-cat"><span class="label">カテゴリ</span><span id="val-cat"></span><button id="open-cat" class="sub small">変更</button></div>
       <div id="row-target"><span class="label">対象</span><span id="val-target"></span><button id="open-target" class="sub small">変更</button></div>
-      <div>
-        <span class="label">最終実施日</span><span id="dLast"></span>
-        <button id="editLastBtn" class="sub small">変更</button>
-      </div>
+      <div><span class="label">最終実施日</span><span id="dLast"></span><button id="editLastBtn" class="sub small">変更</button></div>
     </div>
 
     <div id="editCycle" class="editBox" hidden>
@@ -247,6 +236,7 @@
       <button id="settingsBackBtn" class="sub">← 一覧</button>
     </div>
     <h1>設定</h1>
+
     <div id="settingsFrames"></div>
 
     <h2>通知</h2>
@@ -281,7 +271,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "1.9"; // 変更するたびに上げる
+const APP_VERSION = "2.2";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -413,9 +403,7 @@ function renderFrameUI() {
   if (currentId) renderDetail();
 }
 
-// 鉛筆のアイコン（ペン先が右下を向く形を、最初から描いている）
-const PENCIL_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align:middle"><path d="M21 17.25V21h-3.75L6.19 9.94l3.75-3.75L21 17.25zM3.29 7.04c-.39-.39-.39-1.02 0-1.41l2.34-2.34c.39-.39 1.02-.39 1.41 0l1.83 1.83-3.75 3.75-1.83-1.83z"/></svg>';
-
+// 鉛筆（名前変更）とゴミ箱（削除）のボタンを並べる
 function renderFrameList(f) {
   const box = $(`list-${f.key}`);
   const list = frameState[f.key].list;
@@ -572,9 +560,6 @@ function render() {
       left.style.flex = "1";
       const title = document.createElement("div");
       title.textContent = it.name;
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.textContent = `周期 ${it.cycleCount}${UNIT[it.cycleUnit]}`;
       left.append(title);
 
       const days = document.createElement("span");
@@ -586,6 +571,30 @@ function render() {
     }
     list.appendChild(details);
   }
+}
+
+function startListening() {
+  unsubscribe = db.collection(COL).onSnapshot(
+    snap => {
+      items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      checkNotices();
+      render();
+      if (currentId) renderDetail();
+    },
+    err => {
+      console.error(err);
+      $("list").textContent = "データを読み込めませんでした。通信状態を確認して、開き直してください。";
+    }
+  );
+}
+
+function stopListening() {
+  notices = [];
+  renderNotice();
+  if (unsubscribe) unsubscribe();
+  unsubscribe = null;
+  items = [];
+  $("list").textContent = "";
 }
 
 // ===== お知らせ（アプリを開いたときに、状態が変わった項目を知らせる） =====
@@ -656,40 +665,14 @@ function renderNotice() {
   box.appendChild(close);
 }
 
-function startListening() {
-  unsubscribe = db.collection(COL).onSnapshot(
-    snap => {
-      items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      checkNotices();
-      render();
-      if (currentId) renderDetail();
-    },
-    err => {
-      console.error(err);
-      $("list").textContent = "データを読み込めませんでした。通信状態を確認して、開き直してください。";
-    }
-  );
-}
-
-function stopListening() {
-  notices = [];
-  renderNotice();
-  if (unsubscribe) unsubscribe();
-  unsubscribe = null;
-  items = [];
-  $("list").textContent = "";
-}
-
 // ===== 詳細画面 =====
 function openDetail(id) {
-  $("editMemo").hidden = true;
   currentId = id;
   showAllHist = false;
   $("detailMsg").textContent = "";
-  $("editLast").hidden = true;
-  for (const f of FRAMES) $(`edit-${f.key}`).hidden = true;
-  $("editName").hidden = true;
-  $("editCycle").hidden = true;
+  for (const el of ["editName", "editCycle", "editMemo", "editLast", "edit-cat", "edit-target"]) {
+    $(el).hidden = true;
+  }
   if (histUnsub) histUnsub();
   histUnsub = db.collection(HIST).where("itemId", "==", id).onSnapshot(
     snap => {
@@ -722,10 +705,6 @@ function renderDetail() {
   $("dCycle").textContent = `${it.cycleCount}${UNIT[it.cycleUnit]}`;
   $("dLast").textContent = showDate(it.lastDone);
 
-  // メモは、書いてあるときだけ表示する
-  $("memoView").textContent = it.memo || "";
-  $("memoView").hidden = !it.memo;
-
   // 枠は常に表示し、未設定のときは「未設定」と出す
   for (const f of FRAMES) {
     const name = it[f.field] ? frameName(f, it[f.field]) : null;
@@ -733,6 +712,10 @@ function renderDetail() {
     val.textContent = name || "未設定";
     val.classList.toggle("unset", !name);
   }
+
+  // メモは、書いてあるときだけ表示する
+  $("memoView").textContent = it.memo || "";
+  $("memoView").hidden = !it.memo;
 
   // 一時停止中は「実施した」「一時停止」を隠し、「再開」だけ出す
   $("activeActions").hidden = Boolean(it.paused);
@@ -807,22 +790,28 @@ $("resumeBtn").addEventListener("click", async () => {
   await updateItem({ paused: false, pausedDays: 0, startDate: fmt(today()) });
 });
 
-// 項目の削除：実施履歴もまとめて消す（元に戻せない）
-$("deleteBtn").addEventListener("click", async () => {
+// 周期の変更：計測開始日はそのままにして、新しい周期で状態を計算し直す
+$("editCycleBtn").addEventListener("click", () => {
   const it = items.find(x => x.id === currentId);
   if (!it) return;
-  if (!confirm(`「${it.name}」を削除しますか？\n実施履歴もすべて消えて、元に戻せません。`)) return;
-  try {
-    const hist = await db.collection(HIST).where("itemId", "==", it.id).get();
-    const batch = db.batch();
-    hist.docs.forEach(d => batch.delete(d.ref));
-    batch.delete(db.collection(COL).doc(it.id));
-    await batch.commit();
-    closeDetail();
-  } catch (err) {
-    console.error(err);
-    $("detailMsg").textContent = "削除できませんでした。通信状態を確認して、もう一度押してください。";
+  $("newCycleCount").value = it.cycleCount;
+  $("newCycleUnit").value = it.cycleUnit;
+  $("detailMsg").textContent = "";
+  $("editCycle").hidden = false;
+});
+
+$("cancelCycleBtn").addEventListener("click", () => {
+  $("editCycle").hidden = true;
+});
+
+$("saveCycleBtn").addEventListener("click", async () => {
+  const count = Number($("newCycleCount").value);
+  if (!Number.isInteger(count) || count < 1) {
+    $("detailMsg").textContent = "周期は1以上の整数で入力してください";
+    return;
   }
+  const ok = await updateItem({ cycleCount: count, cycleUnit: $("newCycleUnit").value });
+  if (ok) $("editCycle").hidden = true;
 });
 
 // メモの編集（空にすると、メモは消える）
@@ -864,30 +853,6 @@ $("saveNameBtn").addEventListener("click", async () => {
   if (ok) $("editName").hidden = true;
 });
 
-// 周期の変更：計測開始日はそのままにして、新しい周期で状態を計算し直す
-$("editCycleBtn").addEventListener("click", () => {
-  const it = items.find(x => x.id === currentId);
-  if (!it) return;
-  $("newCycleCount").value = it.cycleCount;
-  $("newCycleUnit").value = it.cycleUnit;
-  $("detailMsg").textContent = "";
-  $("editCycle").hidden = false;
-});
-
-$("cancelCycleBtn").addEventListener("click", () => {
-  $("editCycle").hidden = true;
-});
-
-$("saveCycleBtn").addEventListener("click", async () => {
-  const count = Number($("newCycleCount").value);
-  if (!Number.isInteger(count) || count < 1) {
-    $("detailMsg").textContent = "周期は1以上の整数で入力してください";
-    return;
-  }
-  const ok = await updateItem({ cycleCount: count, cycleUnit: $("newCycleUnit").value });
-  if (ok) $("editCycle").hidden = true;
-});
-
 // 最終実施日の変更：最終実施日と計測開始日を同じ日に合わせる（履歴は追加しない）
 $("editLastBtn").addEventListener("click", () => {
   const it = items.find(x => x.id === currentId);
@@ -911,7 +876,7 @@ $("saveLastBtn").addEventListener("click", async () => {
   if (ok) $("editLast").hidden = true;
 });
 
-// 枠ごとの「設定・変更」（「（なし）」を選ぶと未設定に戻る）
+// 枠ごとの「変更」（「（なし）」を選ぶと未設定に戻る）
 for (const f of FRAMES) {
   $(`open-${f.key}`).addEventListener("click", () => {
     const it = items.find(x => x.id === currentId);
@@ -929,6 +894,24 @@ for (const f of FRAMES) {
     if (ok) $(`edit-${f.key}`).hidden = true;
   });
 }
+
+// ===== 項目の削除：実施履歴もまとめて消す（元に戻せない） =====
+$("deleteBtn").addEventListener("click", async () => {
+  const it = items.find(x => x.id === currentId);
+  if (!it) return;
+  if (!confirm(`「${it.name}」を削除しますか？\n実施履歴もすべて消えて、元に戻せません。`)) return;
+  try {
+    const hist = await db.collection(HIST).where("itemId", "==", it.id).get();
+    const batch = db.batch();
+    hist.docs.forEach(d => batch.delete(d.ref));
+    batch.delete(db.collection(COL).doc(it.id));
+    await batch.commit();
+    closeDetail();
+  } catch (err) {
+    console.error(err);
+    $("detailMsg").textContent = "削除できませんでした。通信状態を確認して、もう一度押してください。";
+  }
+});
 
 // ===== 項目の追加 =====
 $("addForm").addEventListener("submit", async e => {
