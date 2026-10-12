@@ -43,6 +43,8 @@
   .item .days { color: var(--sub); font-size: 15px; white-space: nowrap; }
   .meta { color: var(--sub); font-size: 14px; }
   .unset { color: var(--sub); }
+  textarea { width: 100%; font-size: 16px; padding: 10px; margin: 4px 0 8px; border: 1px solid var(--line); border-radius: 8px; font-family: inherit; color: var(--text); resize: vertical; }
+  .memo { white-space: pre-wrap; background: #fafaf8; border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 15px; }
   .notice { background: #fbf6e9; border-radius: 8px; padding: 10px 12px; margin: 8px 0 4px; }
   .noticeTitle { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
   .noticeRow { padding: 6px 0; cursor: pointer; }
@@ -135,6 +137,10 @@
         <span class="flabel">最終実施日</span>
         <input id="lastDone" type="date" required>
       </div>
+      <div class="field">
+        <span class="flabel">メモ</span>
+        <textarea id="memo" maxlength="500" rows="2"></textarea>
+      </div>
       <button type="submit">＋ 追加</button>
       <p id="addMsg" class="msg"></p>
     </form>
@@ -180,6 +186,16 @@
       <div class="actions">
         <button id="cancelCycleBtn" class="sub">キャンセル</button>
         <button id="saveCycleBtn">保存</button>
+      </div>
+    </div>
+
+    <div id="memoView" class="memo" hidden></div>
+    <button id="editMemoBtn" class="sub" style="margin-top:8px">📝 メモを編集</button>
+    <div id="editMemo" class="editBox" hidden>
+      <textarea id="newMemo" maxlength="500" rows="4"></textarea>
+      <div class="actions">
+        <button id="cancelMemoBtn" class="sub">キャンセル</button>
+        <button id="saveMemoBtn">保存</button>
       </div>
     </div>
 
@@ -265,7 +281,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "1.8"; // 変更するたびに上げる
+const APP_VERSION = "1.9"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -666,6 +682,7 @@ function stopListening() {
 
 // ===== 詳細画面 =====
 function openDetail(id) {
+  $("editMemo").hidden = true;
   currentId = id;
   showAllHist = false;
   $("detailMsg").textContent = "";
@@ -704,6 +721,10 @@ function renderDetail() {
   $("dDays").textContent = `${j.days}日`;
   $("dCycle").textContent = `${it.cycleCount}${UNIT[it.cycleUnit]}`;
   $("dLast").textContent = showDate(it.lastDone);
+
+  // メモは、書いてあるときだけ表示する
+  $("memoView").textContent = it.memo || "";
+  $("memoView").hidden = !it.memo;
 
   // 枠は常に表示し、未設定のときは「未設定」と出す
   for (const f of FRAMES) {
@@ -802,6 +823,25 @@ $("deleteBtn").addEventListener("click", async () => {
     console.error(err);
     $("detailMsg").textContent = "削除できませんでした。通信状態を確認して、もう一度押してください。";
   }
+});
+
+// メモの編集（空にすると、メモは消える）
+$("editMemoBtn").addEventListener("click", () => {
+  const it = items.find(x => x.id === currentId);
+  if (!it) return;
+  $("newMemo").value = it.memo || "";
+  $("detailMsg").textContent = "";
+  $("editMemo").hidden = false;
+});
+
+$("cancelMemoBtn").addEventListener("click", () => {
+  $("editMemo").hidden = true;
+});
+
+$("saveMemoBtn").addEventListener("click", async () => {
+  const v = $("newMemo").value.trim();
+  const ok = await updateItem({ memo: v || null });
+  if (ok) $("editMemo").hidden = true;
 });
 
 // 項目名の変更
@@ -912,12 +952,14 @@ $("addForm").addEventListener("submit", async e => {
       ...frameFields,
       lastDone,
       startDate: lastDone,
+      memo: $("memo").value.trim() || null,
       paused: false
     });
     $("name").value = "";
     $("cycleCount").value = 1;
     $("cycleUnit").value = "w";
     for (const f of FRAMES) $(`add-${f.key}`).value = "";
+    $("memo").value = "";
     $("lastDone").value = fmt(today());
   } catch (err) {
     console.error(err);
