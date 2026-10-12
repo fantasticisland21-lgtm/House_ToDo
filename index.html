@@ -42,6 +42,7 @@
   }
   .item .days { color: var(--sub); font-size: 15px; white-space: nowrap; }
   .meta { color: var(--sub); font-size: 14px; }
+  .tag { font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
   .info > div { padding: 8px 0; border-bottom: 1px solid var(--line); }
   .info .label { color: var(--sub); display: inline-block; width: 6em; }
   .hist { padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -473,6 +474,13 @@ function render() {
       const icon = document.createElement("span");
       icon.textContent = ICON[key];
 
+      // 丸とタスク名の間に、対象の名前を小さく表示する
+      const tName = it.targetId ? frameName(frameOf("target"), it.targetId) : null;
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = tName || "";
+      tag.hidden = !tName;
+
       const left = document.createElement("div");
       left.style.flex = "1";
       const title = document.createElement("div");
@@ -486,7 +494,7 @@ function render() {
       days.className = "days";
       days.textContent = `${it.days}日`;
 
-      row.append(icon, left, days);
+      row.append(icon, tag, left, days);
       details.appendChild(row);
     }
     list.appendChild(details);
