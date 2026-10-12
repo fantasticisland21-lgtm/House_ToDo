@@ -43,6 +43,9 @@
   .item .days { color: var(--sub); font-size: 15px; white-space: nowrap; }
   .meta { color: var(--sub); font-size: 14px; }
   .unset { color: var(--sub); }
+  .notice { background: #fbf6e9; border-radius: 8px; padding: 10px 12px; margin: 8px 0 4px; }
+  .noticeTitle { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .noticeRow { padding: 6px 0; cursor: pointer; }
   .tag { font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
   .info > div { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .info .label + span { flex: 1; }
@@ -100,6 +103,8 @@
       <button id="settingsBtn" class="sub">設定</button>
       <button id="logoutBtn" class="sub">ログアウト</button>
     </div>
+
+    <div id="notice" class="notice" hidden></div>
 
     <form id="addForm">
       <div class="field">
@@ -251,7 +256,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "1.0"; // 変更するたびに上げる
+const APP_VERSION = "1.1"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -553,10 +558,79 @@ function render() {
   }
 }
 
+// ===== お知らせ（アプリを開いたときに、状態が変わった項目を知らせる） =====
+// 通知済みの状態は、この端末ごとに保存する（同じ状態で何度も出さないため）
+const NOTIFIED_KEY = "housework_notified";
+let notices = [];
+
+function loadNotified() {
+  try { return JSON.parse(localStorage.getItem(NOTIFIED_KEY) || "{}"); } catch (e) { return {}; }
+}
+
+function saveNotified(map) {
+  try { localStorage.setItem(NOTIFIED_KEY, JSON.stringify(map)); } catch (e) { console.error(e); }
+}
+
+function checkNotices() {
+  const map = loadNotified();
+  let changed = false;
+  const found = [];
+  for (const it of items) {
+    if (it.paused) continue; // 一時停止中は知らせない
+    const { key } = judge(it);
+    if (key === "normal") {
+      if (map[it.id]) { delete map[it.id]; changed = true; } // 通常に戻ったら、次の変化で再び知らせる
+      continue;
+    }
+    if (map[it.id] !== key) {
+      map[it.id] = key;
+      changed = true;
+      found.push({ id: it.id, name: it.name, key });
+    }
+  }
+  if (changed) saveNotified(map);
+
+  for (const n of found) {
+    notices = notices.filter(x => x.id !== n.id);
+    notices.push(n);
+  }
+  // 項目が消えた、通常に戻った、停止した場合は、お知らせから外す
+  notices = notices.filter(n => items.some(it => it.id === n.id && !it.paused && judge(it).key === n.key));
+  renderNotice();
+}
+
+function renderNotice() {
+  const box = $("notice");
+  box.textContent = "";
+  if (!notices.length) { box.hidden = true; return; }
+  box.hidden = false;
+
+  const title = document.createElement("div");
+  title.className = "noticeTitle";
+  title.textContent = "お知らせ";
+  box.appendChild(title);
+
+  for (const n of notices) {
+    const row = document.createElement("div");
+    row.className = "noticeRow";
+    row.textContent = `${ICON[n.key]} ${n.name}：${LABEL[n.key]}`;
+    row.addEventListener("click", () => openDetail(n.id));
+    box.appendChild(row);
+  }
+
+  const close = document.createElement("button");
+  close.className = "sub";
+  close.textContent = "閉じる";
+  close.style.marginTop = "6px";
+  close.addEventListener("click", () => { notices = []; renderNotice(); });
+  box.appendChild(close);
+}
+
 function startListening() {
   unsubscribe = db.collection(COL).onSnapshot(
     snap => {
       items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      checkNotices();
       render();
       if (currentId) renderDetail();
     },
@@ -568,6 +642,8 @@ function startListening() {
 }
 
 function stopListening() {
+  notices = [];
+  renderNotice();
   if (unsubscribe) unsubscribe();
   unsubscribe = null;
   items = [];
