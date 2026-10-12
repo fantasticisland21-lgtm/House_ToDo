@@ -101,7 +101,7 @@
     <div class="row">
       <h1 style="flex:1">やることリスト <small id="appVer" class="ver"></small></h1>
       <button id="settingsBtn" class="sub">設定</button>
-      <button id="logoutBtn" class="sub">ログアウト</button>
+      <!-- ログアウトは設定画面へ移動 -->
     </div>
 
     <div id="notice" class="notice" hidden></div>
@@ -237,6 +237,9 @@
     <p id="pushMsg" class="msg"></p>
 
     <div id="settingsFrames"></div>
+
+    <h2>アカウント</h2>
+    <button id="logoutBtn" class="danger" style="width:100%">ログアウト</button>
   </section>
 
 </div>
@@ -262,7 +265,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "1.2"; // 変更するたびに上げる
+const APP_VERSION = "1.3"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
