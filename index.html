@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="やることリスト">
+<title>やることリスト（仮）</title>
+<style>
+  :root { --text:#37352f; --sub:#9b9a97; --line:#e9e9e7; --btn:#2383e2; --err:#d44c47; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--text); background: #fff; font-size: 17px; line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 16px; }
+  [hidden] { display: none !important; }
+  h1 { font-size: 24px; margin: 12px 0 16px; }
+  label { display: block; margin-top: 8px; font-size: 15px; color: var(--sub); }
+  input, select {
+    width: 100%; font-size: 17px; padding: 12px; margin: 4px 0 8px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--text);
+  }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  button {
+    width: 100%; font-size: 17px; padding: 12px 16px; margin-top: 8px;
+    border: none; border-radius: 8px; background: var(--btn); color: #fff;
+  }
+  button.sub { background: #f1f1ef; color: var(--text); width: auto; margin-top: 0; }
+  .msg { color: var(--err); font-size: 15px; min-height: 20px; }
+  .empty { color: var(--sub); text-align: center; padding: 24px 0; }
+  details { margin-top: 12px; }
+  summary { font-size: 17px; font-weight: 600; padding: 10px 0; cursor: pointer; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .item .days { color: var(--sub); font-size: 15px; white-space: nowrap; }
+  .meta { color: var(--sub); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ログイン画面 -->
+  <section id="loginView" hidden>
+    <h1>やることリスト（仮）</h1>
+    <form id="loginForm">
+      <label>メールアドレス
+        <input id="email" type="email" autocomplete="username" required>
+      </label>
+      <label>パスワード
+        <input id="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit">ログイン</button>
+      <p id="loginMsg" class="msg"></p>
+    </form>
+  </section>
+
+  <!-- メイン画面 -->
+  <section id="appView" hidden>
+    <div class="row">
+      <h1 style="flex:1">やることリスト</h1>
+      <button id="logoutBtn" class="sub">ログアウト</button>
+    </div>
+
+    <form id="addForm">
+      <label>項目名
+        <input id="name" maxlength="50" placeholder="例：お風呂掃除" required>
+      </label>
+      <label>周期</label>
+      <div class="row">
+        <input id="cycleCount" type="number" min="1" step="1" value="1" required>
+        <select id="cycleUnit">
+          <option value="d">日</option>
+          <option value="w" selected>週間</option>
+          <option value="m">ヶ月</option>
+          <option value="y">年</option>
+        </select>
+      </div>
+      <label>最後に実施した日
+        <input id="lastDone" type="date" required>
+      </label>
+      <button type="submit">＋ 追加</button>
+      <p id="addMsg" class="msg"></p>
+    </form>
+
+    <div id="list"></div>
+  </section>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// ===== Firebaseの接続情報（ここを書き換える）=====
+const firebaseConfig = {
+  apiKey: "AIzaSyAfqtmYf_-inDRo6yEfbfkJjTAlBtHPao8",
+  authDomain: "house-todo-1ef41.firebaseapp.com",
+  projectId: "house-todo-1ef41",
+  storageBucket: "house-todo-1ef41.firebasestorage.app",
+  messagingSenderId: "956040670932",
+  appId: "1:956040670932:web:ee3b3d87e7f7e14b2ad541"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const COL = "housework_items";
+
+// ===== 日付の小さな道具 =====
+const DAY = 86400000;
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parse = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const today = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); };
+
+// 日・週間は日数で足す。ヶ月・年は暦の上で足し、月末は月の最終日に合わせる
+function addPeriod(base, unit, count) {
+  if (unit === "d" || unit === "w") {
+    const days = unit === "w" ? 7 * count : count;
+    return new Date(base.getFullYear(), base.getMonth(), base.getDate() + days);
+  }
+  const months = unit === "y" ? 12 * count : count;
+  const first = new Date(base.getFullYear(), base.getMonth() + months, 1);
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  return new Date(first.getFullYear(), first.getMonth(), Math.min(base.getDate(), last));
+}
+
+// 状態判定：1周期後以上で「そろそろ」、2周期後以上で「やばい」
+function judge(item) {
+  const base = parse(item.lastDone);
+  const t = today();
+  const next1 = addPeriod(base, item.cycleUnit, item.cycleCount);
+  const next2 = addPeriod(base, item.cycleUnit, item.cycleCount * 2);
+  const days = Math.round((t - base) / DAY);
+  let key = "normal";
+  if (t >= next2) key = "danger";
+  else if (t >= next1) key = "soon";
+  return { key, days };
+}
+
+const ICON = { danger: "🔴", soon: "🟡", normal: "⚪" };
+const LABEL = { danger: "やばい", soon: "そろそろ", normal: "通常" };
+const UNIT = { d: "日", w: "週間", m: "ヶ月", y: "年" };
+const ORDER = ["danger", "soon", "normal"];
+
+// ===== 一覧の表示 =====
+let items = [];
+let unsubscribe = null;
+
+function render() {
+  const list = $("list");
+  list.textContent = "";
+  if (!items.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "登録されている項目はありません";
+    list.appendChild(p);
+    return;
+  }
+
+  const judged = items.map(it => ({ ...it, ...judge(it) }));
+  judged.sort((a, b) =>
+    ORDER.indexOf(a.key) - ORDER.indexOf(b.key) ||
+    b.days - a.days ||
+    a.id.localeCompare(b.id)
+  );
+
+  for (const key of ORDER) {
+    const group = judged.filter(x => x.key === key);
+    if (!group.length) continue;
+
+    const details = document.createElement("details");
+    details.open = key !== "normal";
+    const summary = document.createElement("summary");
+    summary.textContent = `${ICON[key]} ${LABEL[key]}（${group.length}件）`;
+    details.appendChild(summary);
+
+    for (const it of group) {
+      const row = document.createElement("div");
+      row.className = "item";
+
+      const icon = document.createElement("span");
+      icon.textContent = ICON[key];
+
+      const left = document.createElement("div");
+      left.style.flex = "1";
+      const title = document.createElement("div");
+      title.textContent = it.name;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = `周期 ${it.cycleCount}${UNIT[it.cycleUnit]}`;
+      left.append(title, meta);
+
+      const days = document.createElement("span");
+      days.className = "days";
+      days.textContent = `${it.days}日`;
+
+      row.append(icon, left, days);
+      details.appendChild(row);
+    }
+    list.appendChild(details);
+  }
+}
+
+function startListening() {
+  unsubscribe = db.collection(COL).onSnapshot(
+    snap => {
+      items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      render();
+    },
+    err => {
+      console.error(err);
+      $("list").textContent = "データを読み込めませんでした。通信状態を確認して、開き直してください。";
+    }
+  );
+}
+
+function stopListening() {
+  if (unsubscribe) unsubscribe();
+  unsubscribe = null;
+  items = [];
+  $("list").textContent = "";
+}
+
+// ===== 項目の追加 =====
+$("addForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const msg = $("addMsg");
+  msg.textContent = "";
+
+  const name = $("name").value.trim();
+  const count = Number($("cycleCount").value);
+  if (!name) { msg.textContent = "項目名を入力してください"; return; }
+  if (!Number.isInteger(count) || count < 1) { msg.textContent = "周期は1以上の整数で入力してください"; return; }
+
+  try {
+    await db.collection(COL).add({
+      name,
+      cycleCount: count,
+      cycleUnit: $("cycleUnit").value,
+      lastDone: $("lastDone").value
+    });
+    $("name").value = "";
+    $("cycleCount").value = 1;
+    $("cycleUnit").value = "w";
+    $("lastDone").value = fmt(today());
+  } catch (err) {
+    console.error(err);
+    msg.textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
+  }
+});
+
+// ===== ログイン・ログアウト =====
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("loginMsg").textContent = "";
+  try {
+    await auth.signInWithEmailAndPassword($("email").value.trim(), $("password").value);
+    $("password").value = "";
+  } catch (err) {
+    console.error(err);
+    $("loginMsg").textContent = "ログインできませんでした。メールアドレスとパスワードを確認してください。";
+  }
+});
+
+$("logoutBtn").addEventListener("click", () => auth.signOut());
+
+auth.onAuthStateChanged(user => {
+  $("loginView").hidden = Boolean(user);
+  $("appView").hidden = !user;
+  if (user) {
+    $("lastDone").value = fmt(today());
+    if (!unsubscribe) startListening();
+  } else {
+    stopListening();
+  }
+});
+</script>
+</body>
+</html>
