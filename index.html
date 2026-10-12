@@ -100,7 +100,7 @@
   <section id="appView" hidden>
     <div class="row">
       <h1 style="flex:1">やることリスト <small id="appVer" class="ver"></small></h1>
-      <button id="settingsBtn" class="sub small" style="margin:0">設定</button>
+      <button id="settingsBtn" class="sub" style="flex:none;width:auto;margin:0">設定</button>
       <!-- ログアウトは設定画面へ移動 -->
     </div>
 
@@ -265,7 +265,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "1.4"; // 変更するたびに上げる
+const APP_VERSION = "1.5"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -397,6 +397,9 @@ function renderFrameUI() {
   if (currentId) renderDetail();
 }
 
+// 鉛筆のアイコン（向きを左右反転して、ペン先が右下になるようにしている）
+const PENCIL_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="transform:scaleX(-1);vertical-align:middle"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+
 function renderFrameList(f) {
   const box = $(`list-${f.key}`);
   const list = frameState[f.key].list;
@@ -418,7 +421,7 @@ function renderFrameList(f) {
 
     const renameBtn = document.createElement("button");
     renameBtn.className = "sub small";
-    renameBtn.textContent = "✏️";
+    renameBtn.innerHTML = PENCIL_ICON;
     renameBtn.title = "名前変更";
     renameBtn.addEventListener("click", () => renameFrameItem(f, c));
 
