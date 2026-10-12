@@ -156,7 +156,7 @@
 
     <div class="info">
       <div><span class="label">状態</span><span id="dStatus"></span></div>
-      <div><span class="label">経過日数</span><span id="dDays"></span></div>
+      <div><span class="label" id="dDaysLabel">経過日数</span><span id="dDays"></span></div>
       <div><span class="label">周期</span><span id="dCycle"></span><button id="editCycleBtn" class="sub small">変更</button></div>
       <div id="row-cat"><span class="label">カテゴリ</span><span id="val-cat"></span><button id="open-cat" class="sub small">変更</button></div>
       <div id="row-target"><span class="label">対象</span><span id="val-target"></span><button id="open-target" class="sub small">変更</button></div>
@@ -273,7 +273,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.3";             // 変更するたびに上げる
+const APP_VERSION = "2.4";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -310,6 +310,19 @@ function addPeriod(base, unit, count) {
   const first = new Date(base.getFullYear(), base.getMonth() + months, 1);
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
   return new Date(first.getFullYear(), first.getMonth(), Math.min(base.getDate(), last));
+}
+
+// 毎月○日の項目の、次の期日と残り日数
+function dueInfo(it) {
+  const due = nextFixed(parse(it.startDate || it.lastDone), it.cycleCount);
+  const left = Math.round((due - today()) / DAY);
+  return { due, left };
+}
+
+function dueLeftText(left) {
+  if (left > 0) return `あと${left}日`;
+  if (left === 0) return "今日が期日";
+  return `${-left}日過ぎ`;
 }
 
 // 毎月○日の期日：基準日より後で、最初に来る「○日」（月末を超える日は末日にする）
@@ -591,7 +604,10 @@ function render() {
 
       const days = document.createElement("span");
       days.className = "days";
-      days.textContent = `${it.days}日`;
+      // 毎月○日の項目は、経過日数ではなく期日までの日数を出す
+      days.textContent = (it.cycleUnit === "f" && !it.paused)
+        ? dueLeftText(dueInfo(it).left)
+        : `${it.days}日`;
 
       row.append(icon, tag, left, days);
       details.appendChild(row);
@@ -728,7 +744,14 @@ function renderDetail() {
 
   $("dName").textContent = it.name;
   $("dStatus").textContent = `${ICON[j.key]} ${LABEL[j.key]}`;
-  $("dDays").textContent = `${j.days}日`;
+  if (it.cycleUnit === "f" && !it.paused) {
+    const d = dueInfo(it);
+    $("dDaysLabel").textContent = "次の期日";
+    $("dDays").textContent = `${showDate(fmt(d.due))}（${dueLeftText(d.left)}）`;
+  } else {
+    $("dDaysLabel").textContent = "経過日数";
+    $("dDays").textContent = `${j.days}日`;
+  }
   $("dCycle").textContent = cycleText(it);
   $("dLast").textContent = showDate(it.lastDone);
 
