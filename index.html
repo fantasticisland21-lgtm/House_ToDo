@@ -42,6 +42,7 @@
   }
   .item .days { color: var(--sub); font-size: 15px; white-space: nowrap; }
   .meta { color: var(--sub); font-size: 14px; }
+  .unset { color: var(--sub); }
   .tag { font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
   .info > div { padding: 8px 0; border-bottom: 1px solid var(--line); }
   .info .label { color: var(--sub); display: inline-block; width: 6em; }
@@ -114,13 +115,23 @@
 
   <!-- 詳細画面 -->
   <section id="detailView" hidden>
-    <h1 id="dName"></h1>
+    <div class="row">
+      <h1 id="dName" style="flex:1"></h1>
+      <button id="editNameBtn" class="sub small" style="flex:0">名前変更</button>
+    </div>
+    <div id="editName" class="editBox" hidden>
+      <input id="newName" maxlength="50">
+      <div class="actions">
+        <button id="cancelNameBtn" class="sub">キャンセル</button>
+        <button id="saveNameBtn">保存</button>
+      </div>
+    </div>
     <div class="info">
       <div><span class="label">状態</span><span id="dStatus"></span></div>
       <div><span class="label">経過日数</span><span id="dDays"></span></div>
       <div><span class="label">周期</span><span id="dCycle"></span></div>
-      <div id="row-cat" hidden><span class="label">カテゴリ</span><span id="val-cat"></span></div>
-      <div id="row-target" hidden><span class="label">対象</span><span id="val-target"></span></div>
+      <div id="row-cat"><span class="label">カテゴリ</span><span id="val-cat"></span></div>
+      <div id="row-target"><span class="label">対象</span><span id="val-target"></span></div>
       <div>
         <span class="label">最終実施日</span><span id="dLast"></span>
         <button id="editLastBtn" class="sub small">変更</button>
@@ -529,6 +540,7 @@ function openDetail(id) {
   $("detailMsg").textContent = "";
   $("editLast").hidden = true;
   for (const f of FRAMES) $(`edit-${f.key}`).hidden = true;
+  $("editName").hidden = true;
   if (histUnsub) histUnsub();
   histUnsub = db.collection(HIST).where("itemId", "==", id).onSnapshot(
     snap => {
@@ -561,11 +573,12 @@ function renderDetail() {
   $("dCycle").textContent = `${it.cycleCount}${UNIT[it.cycleUnit]}`;
   $("dLast").textContent = showDate(it.lastDone);
 
-  // 枠は設定されているときだけ表示する
+  // 枠は常に表示し、未設定のときは「未設定」と出す
   for (const f of FRAMES) {
     const name = it[f.field] ? frameName(f, it[f.field]) : null;
-    $(`row-${f.key}`).hidden = !name;
-    $(`val-${f.key}`).textContent = name || "";
+    const val = $(`val-${f.key}`);
+    val.textContent = name || "未設定";
+    val.classList.toggle("unset", !name);
   }
 
   // 一時停止中は「実施した」「一時停止」を隠し、「再開」だけ出す
@@ -639,6 +652,26 @@ $("pauseBtn").addEventListener("click", async () => {
 $("resumeBtn").addEventListener("click", async () => {
   if (!confirm("再開しますか？")) return;
   await updateItem({ paused: false, pausedDays: 0, startDate: fmt(today()) });
+});
+
+// 項目名の変更
+$("editNameBtn").addEventListener("click", () => {
+  const it = items.find(x => x.id === currentId);
+  if (!it) return;
+  $("newName").value = it.name;
+  $("detailMsg").textContent = "";
+  $("editName").hidden = false;
+});
+
+$("cancelNameBtn").addEventListener("click", () => {
+  $("editName").hidden = true;
+});
+
+$("saveNameBtn").addEventListener("click", async () => {
+  const v = $("newName").value.trim();
+  if (!v) { $("detailMsg").textContent = "項目名を入力してください"; return; }
+  const ok = await updateItem({ name: v });
+  if (ok) $("editName").hidden = true;
 });
 
 // 最終実施日の変更：最終実施日と計測開始日を同じ日に合わせる（履歴は追加しない）
