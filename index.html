@@ -16,6 +16,7 @@
   .wrap { max-width: 560px; margin: 0 auto; padding: 16px; }
   [hidden] { display: none !important; }
   h1 { font-size: 24px; margin: 12px 0 16px; }
+  h2 { font-size: 17px; margin: 24px 0 8px; }
   label { display: block; margin-top: 8px; font-size: 15px; color: var(--sub); }
   input, select {
     width: 100%; font-size: 17px; padding: 12px; margin: 4px 0 8px;
@@ -32,9 +33,15 @@
   .empty { color: var(--sub); text-align: center; padding: 24px 0; }
   details { margin-top: 12px; }
   summary { font-size: 17px; font-weight: 600; padding: 10px 0; cursor: pointer; }
-  .item { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .item {
+    display: flex; align-items: center; gap: 10px; padding: 12px 0;
+    border-bottom: 1px solid var(--line); cursor: pointer;
+  }
   .item .days { color: var(--sub); font-size: 15px; white-space: nowrap; }
   .meta { color: var(--sub); font-size: 14px; }
+  .info > div { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .info .label { color: var(--sub); display: inline-block; width: 6em; }
+  .hist { padding: 8px 0; border-bottom: 1px solid var(--line); }
 </style>
 </head>
 <body>
@@ -55,7 +62,7 @@
     </form>
   </section>
 
-  <!-- メイン画面 -->
+  <!-- 一覧画面 -->
   <section id="appView" hidden>
     <div class="row">
       <h1 style="flex:1">やることリスト</h1>
@@ -86,13 +93,33 @@
     <div id="list"></div>
   </section>
 
+  <!-- 詳細画面 -->
+  <section id="detailView" hidden>
+    <div class="row">
+      <button id="backBtn" class="sub">← 一覧</button>
+    </div>
+    <h1 id="dName"></h1>
+    <div class="info">
+      <div><span class="label">状態</span><span id="dStatus"></span></div>
+      <div><span class="label">経過日数</span><span id="dDays"></span></div>
+      <div><span class="label">周期</span><span id="dCycle"></span></div>
+      <div><span class="label">最終実施日</span><span id="dLast"></span></div>
+    </div>
+    <button id="doneBtn">✅ 実施した</button>
+    <p id="detailMsg" class="msg"></p>
+
+    <h2>実施履歴</h2>
+    <div id="history"></div>
+    <button id="moreBtn" class="sub" hidden>もっと見る</button>
+  </section>
+
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
-// ===== Firebaseの接続情報（ここを書き換える）=====
+// ===== Firebaseの接続情報 =====
 const firebaseConfig = {
   apiKey: "AIzaSyAfqtmYf_-inDRo6yEfbfkJjTAlBtHPao8",
   authDomain: "house-todo-1ef41.firebaseapp.com",
@@ -105,13 +132,15 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const COL = "housework_items";
+const COL = "housework_items";   // 項目
+const HIST = "housework_history"; // 実施履歴（{ itemId, date }）
 
 // ===== 日付の小さな道具 =====
 const DAY = 86400000;
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, "0");
 const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const showDate = s => s.replaceAll("-", "/");
 const parse = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const today = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); };
 
@@ -145,10 +174,21 @@ const LABEL = { danger: "やばい", soon: "そろそろ", normal: "通常" };
 const UNIT = { d: "日", w: "週間", m: "ヶ月", y: "年" };
 const ORDER = ["danger", "soon", "normal"];
 
-// ===== 一覧の表示 =====
+// ===== 画面の切り替え =====
 let items = [];
 let unsubscribe = null;
+let currentId = null;
+let histItems = [];
+let histUnsub = null;
+let showAllHist = false;
 
+function showView(name) {
+  $("loginView").hidden = name !== "login";
+  $("appView").hidden = name !== "list";
+  $("detailView").hidden = name !== "detail";
+}
+
+// ===== 一覧の表示 =====
 function render() {
   const list = $("list");
   list.textContent = "";
@@ -180,6 +220,7 @@ function render() {
     for (const it of group) {
       const row = document.createElement("div");
       row.className = "item";
+      row.addEventListener("click", () => openDetail(it.id));
 
       const icon = document.createElement("span");
       icon.textContent = ICON[key];
@@ -209,6 +250,7 @@ function startListening() {
     snap => {
       items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       render();
+      if (currentId) renderDetail();
     },
     err => {
       console.error(err);
@@ -223,6 +265,83 @@ function stopListening() {
   items = [];
   $("list").textContent = "";
 }
+
+// ===== 詳細画面 =====
+function openDetail(id) {
+  currentId = id;
+  showAllHist = false;
+  $("detailMsg").textContent = "";
+  if (histUnsub) histUnsub();
+  histUnsub = db.collection(HIST).where("itemId", "==", id).onSnapshot(
+    snap => {
+      histItems = snap.docs.map(d => d.data().date).sort().reverse();
+      renderDetail();
+    },
+    err => console.error(err)
+  );
+  renderDetail();
+  showView("detail");
+  window.scrollTo(0, 0);
+}
+
+function closeDetail() {
+  currentId = null;
+  if (histUnsub) histUnsub();
+  histUnsub = null;
+  histItems = [];
+  showView("list");
+}
+
+function renderDetail() {
+  const it = items.find(x => x.id === currentId);
+  if (!it) { closeDetail(); return; } // 項目が見つからない場合は一覧へ戻る
+  const j = judge(it);
+
+  $("dName").textContent = it.name;
+  $("dStatus").textContent = `${ICON[j.key]} ${LABEL[j.key]}`;
+  $("dDays").textContent = `${j.days}日`;
+  $("dCycle").textContent = `${it.cycleCount}${UNIT[it.cycleUnit]}`;
+  $("dLast").textContent = showDate(it.lastDone);
+
+  const hist = $("history");
+  hist.textContent = "";
+  const shown = showAllHist ? histItems : histItems.slice(0, 5);
+  if (!shown.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "まだ実施履歴はありません";
+    hist.appendChild(p);
+  }
+  for (const date of shown) {
+    const row = document.createElement("div");
+    row.className = "hist";
+    row.textContent = showDate(date);
+    hist.appendChild(row);
+  }
+  $("moreBtn").hidden = showAllHist || histItems.length <= 5;
+}
+
+$("backBtn").addEventListener("click", closeDetail);
+$("moreBtn").addEventListener("click", () => { showAllHist = true; renderDetail(); });
+
+// 「実施した」：項目の最終実施日の更新と履歴の追加を、まとめて保存する
+$("doneBtn").addEventListener("click", async () => {
+  const it = items.find(x => x.id === currentId);
+  if (!it) return;
+  $("detailMsg").textContent = "";
+  if (!confirm("実施しましたか？")) return;
+
+  const dateStr = fmt(today());
+  try {
+    const batch = db.batch();
+    batch.update(db.collection(COL).doc(it.id), { lastDone: dateStr });
+    batch.set(db.collection(HIST).doc(), { itemId: it.id, date: dateStr });
+    await batch.commit();
+  } catch (err) {
+    console.error(err);
+    $("detailMsg").textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
+  }
+});
 
 // ===== 項目の追加 =====
 $("addForm").addEventListener("submit", async e => {
@@ -268,13 +387,14 @@ $("loginForm").addEventListener("submit", async e => {
 $("logoutBtn").addEventListener("click", () => auth.signOut());
 
 auth.onAuthStateChanged(user => {
-  $("loginView").hidden = Boolean(user);
-  $("appView").hidden = !user;
   if (user) {
+    showView("list");
     $("lastDone").value = fmt(today());
     if (!unsubscribe) startListening();
   } else {
+    closeDetail();
     stopListening();
+    showView("login");
   }
 });
 </script>
