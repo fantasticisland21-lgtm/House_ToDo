@@ -68,7 +68,7 @@
   #addForm .row { margin-top: 6px; }
   /* 入力欄の位置と幅をそろえる：ラベルは固定幅、入力欄は残りを埋める */
   #addForm .field { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-  #addForm .flabel { flex: none; width: 6.5em; font-size: 15px; color: var(--sub); }
+  #addForm .flabel { flex: none; width: 8.5em; font-size: 14px; color: var(--sub); white-space: nowrap; }
   #addForm .field > input, #addForm .field > select, #addForm .field > .ctrl2 { flex: 1; min-width: 0; }
   #addForm .field > input, #addForm .field > select { width: 100%; margin: 0; font-size: 16px; padding: 8px 10px; }
   #addForm .ctrl2 { display: flex; gap: 8px; }
@@ -250,7 +250,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "0.8"; // 変更するたびに上げる
+const APP_VERSION = "0.9"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
