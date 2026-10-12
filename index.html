@@ -30,6 +30,7 @@
   }
   button.sub { background: #f1f1ef; color: var(--text); width: auto; margin-top: 0; }
   button.small { width: auto; margin: 0 0 0 8px; padding: 4px 10px; font-size: 14px; }
+  button.danger { background: #f1f1ef; color: var(--err); width: auto; margin-top: 0; }
   .msg { color: var(--err); font-size: 15px; min-height: 20px; }
   .empty { color: var(--sub); text-align: center; padding: 24px 0; }
   details { margin-top: 12px; }
@@ -44,6 +45,8 @@
   .info .label { color: var(--sub); display: inline-block; width: 6em; }
   .hist { padding: 8px 0; border-bottom: 1px solid var(--line); }
   .editBox { padding: 8px 0; }
+  .catRow { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .catRow .name { flex: 1; }
   /* 片手（右手）で押しやすいよう、主な操作は右側に置く */
   .actions { display: flex; gap: 8px; }
   .actions > button { flex: 1; width: auto; margin-top: 8px; }
@@ -73,6 +76,7 @@
   <section id="appView" hidden>
     <div class="row">
       <h1 style="flex:1">やることリスト</h1>
+      <button id="settingsBtn" class="sub">設定</button>
       <button id="logoutBtn" class="sub">ログアウト</button>
     </div>
 
@@ -90,6 +94,9 @@
           <option value="y">年</option>
         </select>
       </div>
+      <label>カテゴリ
+        <select id="addCat"></select>
+      </label>
       <label>最後に実施した日
         <input id="lastDone" type="date" required>
       </label>
@@ -110,6 +117,7 @@
       <div><span class="label">状態</span><span id="dStatus"></span></div>
       <div><span class="label">経過日数</span><span id="dDays"></span></div>
       <div><span class="label">周期</span><span id="dCycle"></span></div>
+      <div id="catRow" hidden><span class="label">カテゴリ</span><span id="dCat"></span></div>
       <div>
         <span class="label">最終実施日</span><span id="dLast"></span>
         <button id="editLastBtn" class="sub small">変更</button>
@@ -121,6 +129,15 @@
       <div class="actions">
         <button id="cancelLastBtn" class="sub">キャンセル</button>
         <button id="saveLastBtn">保存</button>
+      </div>
+    </div>
+
+    <button id="openCatBtn" class="sub" style="margin-top:8px">🏷️ カテゴリを設定・変更</button>
+    <div id="editCat" class="editBox" hidden>
+      <select id="newCat"></select>
+      <div class="actions">
+        <button id="cancelCatBtn" class="sub">キャンセル</button>
+        <button id="saveCatBtn">保存</button>
       </div>
     </div>
 
@@ -137,6 +154,24 @@
     <h2>実施履歴</h2>
     <div id="history"></div>
     <button id="moreBtn" class="sub" hidden>もっと見る</button>
+  </section>
+
+  <!-- 設定画面 -->
+  <section id="settingsView" hidden>
+    <div class="row">
+      <button id="settingsBackBtn" class="sub">← 一覧</button>
+    </div>
+    <h1>設定</h1>
+
+    <h2>カテゴリ管理</h2>
+    <div id="catList"></div>
+    <form id="catAddForm">
+      <label>新しいカテゴリ名
+        <input id="newCatName" maxlength="20" required>
+      </label>
+      <button type="submit">＋ カテゴリを追加</button>
+      <p id="catMsg" class="msg"></p>
+    </form>
   </section>
 
 </div>
@@ -158,8 +193,12 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const COL = "housework_items";    // 項目
-const HIST = "housework_history"; // 実施履歴（{ itemId, date }）
+const COL = "housework_items";       // 項目
+const HIST = "housework_history";    // 実施履歴（{ itemId, date }）
+const CAT = "housework_categories";  // カテゴリ（{ name, order }）
+const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
+
+const DEFAULT_CATS = ["掃除", "メンテナンス", "消耗品・交換", "身の回り", "その他"];
 
 // ===== 日付の小さな道具 =====
 const DAY = 86400000;
@@ -207,6 +246,8 @@ const ORDER = ["danger", "soon", "normal", "paused"];
 // ===== 画面の状態 =====
 let items = [];
 let unsubscribe = null;
+let cats = [];
+let catUnsub = null;
 let currentId = null;
 let histItems = [];
 let histUnsub = null;
@@ -216,7 +257,143 @@ function showView(name) {
   $("loginView").hidden = name !== "login";
   $("appView").hidden = name !== "list";
   $("detailView").hidden = name !== "detail";
+  $("settingsView").hidden = name !== "settings";
 }
+
+// ===== カテゴリ =====
+function catName(id) {
+  const c = cats.find(x => x.id === id);
+  return c ? c.name : null;
+}
+
+// 初回だけ、既定のカテゴリを入れる（同じIDで書くので、2台同時でも重複しない）
+async function ensureDefaultCategories() {
+  const ref = db.collection(SETTINGS).doc("main");
+  const snap = await ref.get();
+  if (snap.exists && snap.data().categoriesSeeded) return;
+  const batch = db.batch();
+  DEFAULT_CATS.forEach((name, i) => {
+    batch.set(db.collection(CAT).doc(`default-${i + 1}`), { name, order: i + 1 });
+  });
+  batch.set(ref, { categoriesSeeded: true }, { merge: true });
+  await batch.commit();
+}
+
+function startCategories() {
+  catUnsub = db.collection(CAT).onSnapshot(
+    snap => {
+      cats = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || a.id.localeCompare(b.id));
+      renderCategoryUI();
+    },
+    err => console.error(err)
+  );
+}
+
+function stopCategories() {
+  if (catUnsub) catUnsub();
+  catUnsub = null;
+  cats = [];
+}
+
+// カテゴリの選択肢（追加フォーム・詳細の変更欄）と、設定画面の一覧を作り直す
+function renderCategoryUI() {
+  const fill = (sel, keep) => {
+    const cur = sel.value;
+    sel.textContent = "";
+    sel.appendChild(new Option("（なし）", ""));
+    cats.forEach(c => sel.appendChild(new Option(c.name, c.id)));
+    if (keep) sel.value = cur;
+  };
+  fill($("addCat"), true);
+  fill($("newCat"), true);
+  renderCatList();
+  if (currentId) renderDetail();
+}
+
+function renderCatList() {
+  const box = $("catList");
+  box.textContent = "";
+  if (!cats.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "カテゴリはまだありません";
+    box.appendChild(p);
+    return;
+  }
+  for (const c of cats) {
+    const row = document.createElement("div");
+    row.className = "catRow";
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = c.name;
+
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "sub small";
+    renameBtn.textContent = "名前変更";
+    renameBtn.addEventListener("click", () => renameCategory(c));
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "danger small";
+    delBtn.textContent = "削除";
+    delBtn.addEventListener("click", () => deleteCategory(c));
+
+    row.append(name, renameBtn, delBtn);
+    box.appendChild(row);
+  }
+}
+
+function hasSameName(name, exceptId) {
+  return cats.some(c => c.name === name && c.id !== exceptId);
+}
+
+async function renameCategory(c) {
+  $("catMsg").textContent = "";
+  const next = (prompt("新しい名前", c.name) ?? "").trim();
+  if (!next || next === c.name) return;
+  if (hasSameName(next, c.id)) { $("catMsg").textContent = "同じ名前のカテゴリがあります"; return; }
+  try {
+    await db.collection(CAT).doc(c.id).update({ name: next });
+  } catch (err) {
+    console.error(err);
+    $("catMsg").textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
+  }
+}
+
+// 削除：所属する項目はカテゴリなしにする（項目自体は消さない）
+async function deleteCategory(c) {
+  $("catMsg").textContent = "";
+  if (!confirm(`「${c.name}」を削除しますか？\n所属している項目はカテゴリなしになります。`)) return;
+  try {
+    const batch = db.batch();
+    batch.delete(db.collection(CAT).doc(c.id));
+    items.filter(it => it.categoryId === c.id).forEach(it => {
+      batch.update(db.collection(COL).doc(it.id), { categoryId: null });
+    });
+    await batch.commit();
+  } catch (err) {
+    console.error(err);
+    $("catMsg").textContent = "削除できませんでした。通信状態を確認して、もう一度押してください。";
+  }
+}
+
+$("catAddForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("catMsg").textContent = "";
+  const name = $("newCatName").value.trim();
+  if (!name) { $("catMsg").textContent = "カテゴリ名を入力してください"; return; }
+  if (hasSameName(name, null)) { $("catMsg").textContent = "同じ名前のカテゴリがあります"; return; }
+  const order = cats.reduce((m, c) => Math.max(m, c.order ?? 0), 0) + 1;
+  try {
+    await db.collection(CAT).add({ name, order });
+    $("newCatName").value = "";
+  } catch (err) {
+    console.error(err);
+    $("catMsg").textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
+  }
+});
 
 // ===== 一覧の表示 =====
 function render() {
@@ -302,6 +479,7 @@ function openDetail(id) {
   showAllHist = false;
   $("detailMsg").textContent = "";
   $("editLast").hidden = true;
+  $("editCat").hidden = true;
   if (histUnsub) histUnsub();
   histUnsub = db.collection(HIST).where("itemId", "==", id).onSnapshot(
     snap => {
@@ -333,6 +511,11 @@ function renderDetail() {
   $("dDays").textContent = `${j.days}日`;
   $("dCycle").textContent = `${it.cycleCount}${UNIT[it.cycleUnit]}`;
   $("dLast").textContent = showDate(it.lastDone);
+
+  // カテゴリは設定されているときだけ表示する
+  const cname = it.categoryId ? catName(it.categoryId) : null;
+  $("catRow").hidden = !cname;
+  $("dCat").textContent = cname || "";
 
   // 一時停止中は「実施した」「一時停止」を隠し、「再開」だけ出す
   $("activeActions").hidden = Boolean(it.paused);
@@ -430,6 +613,25 @@ $("saveLastBtn").addEventListener("click", async () => {
   if (ok) $("editLast").hidden = true;
 });
 
+// カテゴリの設定・変更（「なし」を選ぶと未設定に戻る）
+$("openCatBtn").addEventListener("click", () => {
+  const it = items.find(x => x.id === currentId);
+  if (!it) return;
+  $("newCat").value = it.categoryId || "";
+  $("detailMsg").textContent = "";
+  $("editCat").hidden = false;
+});
+
+$("cancelCatBtn").addEventListener("click", () => {
+  $("editCat").hidden = true;
+});
+
+$("saveCatBtn").addEventListener("click", async () => {
+  const v = $("newCat").value || null;
+  const ok = await updateItem({ categoryId: v });
+  if (ok) $("editCat").hidden = true;
+});
+
 // ===== 項目の追加 =====
 $("addForm").addEventListener("submit", async e => {
   e.preventDefault();
@@ -447,6 +649,7 @@ $("addForm").addEventListener("submit", async e => {
       name,
       cycleCount: count,
       cycleUnit: $("cycleUnit").value,
+      categoryId: $("addCat").value || null,
       lastDone,
       startDate: lastDone,
       paused: false
@@ -454,12 +657,17 @@ $("addForm").addEventListener("submit", async e => {
     $("name").value = "";
     $("cycleCount").value = 1;
     $("cycleUnit").value = "w";
+    $("addCat").value = "";
     $("lastDone").value = fmt(today());
   } catch (err) {
     console.error(err);
     msg.textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
   }
 });
+
+// ===== 画面の移動 =====
+$("settingsBtn").addEventListener("click", () => { $("catMsg").textContent = ""; showView("settings"); });
+$("settingsBackBtn").addEventListener("click", () => showView("list"));
 
 // ===== ログイン・ログアウト =====
 $("loginForm").addEventListener("submit", async e => {
@@ -476,14 +684,21 @@ $("loginForm").addEventListener("submit", async e => {
 
 $("logoutBtn").addEventListener("click", () => auth.signOut());
 
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async user => {
   if (user) {
     showView("list");
     $("lastDone").value = fmt(today());
     if (!unsubscribe) startListening();
+    if (!catUnsub) startCategories();
+    try {
+      await ensureDefaultCategories();
+    } catch (err) {
+      console.error(err);
+    }
   } else {
     closeDetail();
     stopListening();
+    stopCategories();
     showView("login");
   }
 });
