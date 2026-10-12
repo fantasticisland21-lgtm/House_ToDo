@@ -42,6 +42,8 @@
   .info > div { padding: 8px 0; border-bottom: 1px solid var(--line); }
   .info .label { color: var(--sub); display: inline-block; width: 6em; }
   .hist { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .actions { display: flex; gap: 8px; }
+  .actions > button { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -105,7 +107,14 @@
       <div><span class="label">周期</span><span id="dCycle"></span></div>
       <div><span class="label">最終実施日</span><span id="dLast"></span></div>
     </div>
-    <button id="doneBtn">✅ 実施した</button>
+
+    <div id="activeActions" class="actions">
+      <button id="doneBtn">✅ 実施した</button>
+      <button id="pauseBtn" class="sub">⏸️ 一時停止</button>
+    </div>
+    <div id="pausedActions" class="actions" hidden>
+      <button id="resumeBtn">▶️ 再開</button>
+    </div>
     <p id="detailMsg" class="msg"></p>
 
     <h2>実施履歴</h2>
@@ -132,7 +141,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const COL = "housework_items";   // 項目
+const COL = "housework_items";    // 項目
 const HIST = "housework_history"; // 実施履歴（{ itemId, date }）
 
 // ===== 日付の小さな道具 =====
@@ -156,9 +165,13 @@ function addPeriod(base, unit, count) {
   return new Date(first.getFullYear(), first.getMonth(), Math.min(base.getDate(), last));
 }
 
-// 状態判定：1周期後以上で「そろそろ」、2周期後以上で「やばい」
+// 状態判定：計測開始日を基準に、1周期後以上で「そろそろ」、2周期後以上で「やばい」
+// 一時停止中は、停止した時点の経過日数を保持する
 function judge(item) {
-  const base = parse(item.lastDone);
+  if (item.paused) {
+    return { key: "paused", days: item.pausedDays ?? 0 };
+  }
+  const base = parse(item.startDate || item.lastDone);
   const t = today();
   const next1 = addPeriod(base, item.cycleUnit, item.cycleCount);
   const next2 = addPeriod(base, item.cycleUnit, item.cycleCount * 2);
@@ -169,12 +182,12 @@ function judge(item) {
   return { key, days };
 }
 
-const ICON = { danger: "🔴", soon: "🟡", normal: "⚪" };
-const LABEL = { danger: "やばい", soon: "そろそろ", normal: "通常" };
+const ICON = { danger: "🔴", soon: "🟡", normal: "⚪", paused: "⏸️" };
+const LABEL = { danger: "やばい", soon: "そろそろ", normal: "通常", paused: "一時停止中" };
 const UNIT = { d: "日", w: "週間", m: "ヶ月", y: "年" };
-const ORDER = ["danger", "soon", "normal"];
+const ORDER = ["danger", "soon", "normal", "paused"];
 
-// ===== 画面の切り替え =====
+// ===== 画面の状態 =====
 let items = [];
 let unsubscribe = null;
 let currentId = null;
@@ -303,6 +316,10 @@ function renderDetail() {
   $("dCycle").textContent = `${it.cycleCount}${UNIT[it.cycleUnit]}`;
   $("dLast").textContent = showDate(it.lastDone);
 
+  // 一時停止中は「実施した」「一時停止」を隠し、「再開」だけ出す
+  $("activeActions").hidden = Boolean(it.paused);
+  $("pausedActions").hidden = !it.paused;
+
   const hist = $("history");
   hist.textContent = "";
   const shown = showAllHist ? histItems : histItems.slice(0, 5);
@@ -324,7 +341,20 @@ function renderDetail() {
 $("backBtn").addEventListener("click", closeDetail);
 $("moreBtn").addEventListener("click", () => { showAllHist = true; renderDetail(); });
 
-// 「実施した」：項目の最終実施日の更新と履歴の追加を、まとめて保存する
+// 共通：項目の更新を保存し、失敗時は成功したように見せない
+async function updateItem(fields, failMsg) {
+  const it = items.find(x => x.id === currentId);
+  if (!it) return;
+  $("detailMsg").textContent = "";
+  try {
+    await db.collection(COL).doc(it.id).update(fields);
+  } catch (err) {
+    console.error(err);
+    $("detailMsg").textContent = failMsg;
+  }
+}
+
+// 「実施した」：最終実施日と計測開始日を今日にし、履歴を追加する（まとめて保存）
 $("doneBtn").addEventListener("click", async () => {
   const it = items.find(x => x.id === currentId);
   if (!it) return;
@@ -334,13 +364,34 @@ $("doneBtn").addEventListener("click", async () => {
   const dateStr = fmt(today());
   try {
     const batch = db.batch();
-    batch.update(db.collection(COL).doc(it.id), { lastDone: dateStr });
+    batch.update(db.collection(COL).doc(it.id), { lastDone: dateStr, startDate: dateStr });
     batch.set(db.collection(HIST).doc(), { itemId: it.id, date: dateStr });
     await batch.commit();
   } catch (err) {
     console.error(err);
     $("detailMsg").textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
   }
+});
+
+// 一時停止：停止した時点の経過日数を保存する（履歴には残さない）
+$("pauseBtn").addEventListener("click", async () => {
+  const it = items.find(x => x.id === currentId);
+  if (!it) return;
+  if (!confirm("一時停止しますか？")) return;
+  const j = judge(it);
+  await updateItem(
+    { paused: true, pausedDays: j.days },
+    "保存できませんでした。通信状態を確認して、もう一度押してください。"
+  );
+});
+
+// 再開：計測開始日を今日にし、経過日数を0に戻す（最終実施日と履歴は変えない）
+$("resumeBtn").addEventListener("click", async () => {
+  if (!confirm("再開しますか？")) return;
+  await updateItem(
+    { paused: false, pausedDays: 0, startDate: fmt(today()) },
+    "保存できませんでした。通信状態を確認して、もう一度押してください。"
+  );
 });
 
 // ===== 項目の追加 =====
@@ -354,12 +405,15 @@ $("addForm").addEventListener("submit", async e => {
   if (!name) { msg.textContent = "項目名を入力してください"; return; }
   if (!Number.isInteger(count) || count < 1) { msg.textContent = "周期は1以上の整数で入力してください"; return; }
 
+  const lastDone = $("lastDone").value;
   try {
     await db.collection(COL).add({
       name,
       cycleCount: count,
       cycleUnit: $("cycleUnit").value,
-      lastDone: $("lastDone").value
+      lastDone,
+      startDate: lastDone,
+      paused: false
     });
     $("name").value = "";
     $("cycleCount").value = 1;
