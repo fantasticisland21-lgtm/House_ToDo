@@ -231,6 +231,11 @@
       <button id="settingsBackBtn" class="sub">← 一覧</button>
     </div>
     <h1>設定</h1>
+    <h2>通知</h2>
+    <p class="meta">ホーム画面のアイコンから開いて、通知を許可してください。</p>
+    <button id="pushBtn">🔔 このiPhoneで通知を受け取る</button>
+    <p id="pushMsg" class="msg"></p>
+
     <div id="settingsFrames"></div>
   </section>
 
@@ -239,6 +244,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script>
 // ===== Firebaseの接続情報 =====
 const firebaseConfig = {
@@ -256,7 +262,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "1.1"; // 変更するたびに上げる
+const APP_VERSION = "1.2"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -908,6 +914,37 @@ $("addForm").addEventListener("submit", async e => {
   } catch (err) {
     console.error(err);
     msg.textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
+  }
+});
+
+// ===== このiPhoneを通知の送り先として登録する =====
+const VAPID_KEY = "BE5Px2M0nWrz-UNpxzih6EGRHREyaPcbtqCem47Psv_I2e5SGRF3_pkJUKluVO9rvrZefhnIR3NIwEQFjxwEZZ4";
+
+$("pushBtn").addEventListener("click", async () => {
+  const msg = $("pushMsg");
+  msg.textContent = "";
+  try {
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !firebase.messaging.isSupported()) {
+      msg.textContent = "この画面では通知を使えません。ホーム画面のアイコンから開いてください。";
+      return;
+    }
+    // iPhoneでは、ボタンを押したときに許可を求める必要がある
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      msg.textContent = "通知が許可されませんでした。設定アプリから許可できます。";
+      return;
+    }
+    const reg = await navigator.serviceWorker.register("./firebase-messaging-sw.js");
+    const token = await firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) {
+      msg.textContent = "登録できませんでした。もう一度押してください。";
+      return;
+    }
+    await db.collection("housework_devices").doc(token).set({ token, updatedAt: new Date().toISOString() });
+    msg.textContent = "このiPhoneで通知を受け取れるようになりました。";
+  } catch (err) {
+    console.error(err);
+    msg.textContent = "登録できませんでした。ホーム画面から開き直して、もう一度押してください。";
   }
 });
 
