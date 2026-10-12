@@ -56,6 +56,11 @@
   .actions > button { flex: 1; width: auto; margin-top: 8px; }
   .actions > #doneBtn, .actions > #resumeBtn { flex: 2; }
   .spacer { flex: 1; }
+  .ver { font-size: 12px; color: var(--sub); font-weight: 400; }
+  /* 入力欄をコンパクトに */
+  #addForm label { margin-top: 4px; }
+  #addForm input, #addForm select { font-size: 16px; padding: 8px 10px; margin: 2px 0 4px; }
+  #addForm .row > label { flex: 1; }
 </style>
 </head>
 <body>
@@ -79,7 +84,7 @@
   <!-- 一覧画面 -->
   <section id="appView" hidden>
     <div class="row">
-      <h1 style="flex:1">やることリスト</h1>
+      <h1 style="flex:1">やることリスト <small id="appVer" class="ver"></small></h1>
       <button id="settingsBtn" class="sub">設定</button>
       <button id="logoutBtn" class="sub">ログアウト</button>
     </div>
@@ -98,12 +103,14 @@
           <option value="y">年</option>
         </select>
       </div>
-      <label>カテゴリ
-        <select id="add-cat"></select>
-      </label>
-      <label>対象
-        <select id="add-target"></select>
-      </label>
+      <div class="row">
+        <label>カテゴリ
+          <select id="add-cat"></select>
+        </label>
+        <label>対象
+          <select id="add-target"></select>
+        </label>
+      </div>
       <label>最後に実施した日
         <input id="lastDone" type="date" required>
       </label>
@@ -227,6 +234,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
+const APP_VERSION = "0.6"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -354,6 +362,7 @@ function renderFrameUI() {
     }
     renderFrameList(f);
   }
+  render(); // 一覧の対象名も、枠の読み込み後に出し直す
   if (currentId) renderDetail();
 }
 
@@ -814,6 +823,7 @@ $("loginForm").addEventListener("submit", async e => {
 $("logoutBtn").addEventListener("click", () => auth.signOut());
 
 buildSettings();
+$("appVer").textContent = `v${APP_VERSION}`;
 
 auth.onAuthStateChanged(async user => {
   if (user) {
