@@ -100,7 +100,7 @@
   <section id="appView" hidden>
     <div class="row">
       <h1 style="flex:1">やることリスト <small id="appVer" class="ver"></small></h1>
-      <button id="settingsBtn" class="sub">設定</button>
+      <button id="settingsBtn" class="sub small" style="margin:0">設定</button>
       <!-- ログアウトは設定画面へ移動 -->
     </div>
 
@@ -231,12 +231,12 @@
       <button id="settingsBackBtn" class="sub">← 一覧</button>
     </div>
     <h1>設定</h1>
+    <div id="settingsFrames"></div>
+
     <h2>通知</h2>
     <p class="meta">ホーム画面のアイコンから開いて、通知を許可してください。</p>
     <button id="pushBtn">🔔 このiPhoneで通知を受け取る</button>
     <p id="pushMsg" class="msg"></p>
-
-    <div id="settingsFrames"></div>
 
     <h2>アカウント</h2>
     <button id="logoutBtn" class="danger" style="width:100%">ログアウト</button>
@@ -265,7 +265,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "1.3"; // 変更するたびに上げる
+const APP_VERSION = "1.4"; // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -418,12 +418,14 @@ function renderFrameList(f) {
 
     const renameBtn = document.createElement("button");
     renameBtn.className = "sub small";
-    renameBtn.textContent = "名前変更";
+    renameBtn.textContent = "✏️";
+    renameBtn.title = "名前変更";
     renameBtn.addEventListener("click", () => renameFrameItem(f, c));
 
     const delBtn = document.createElement("button");
     delBtn.className = "danger small";
-    delBtn.textContent = "削除";
+    delBtn.textContent = "🗑";
+    delBtn.title = "削除";
     delBtn.addEventListener("click", () => deleteFrameItem(f, c));
 
     row.append(name, renameBtn, delBtn);
