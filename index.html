@@ -31,6 +31,7 @@
   button.sub { background: #f1f1ef; color: var(--text); width: auto; margin-top: 0; }
   button.small { width: auto; margin: 0 0 0 8px; padding: 4px 10px; font-size: 14px; }
   button.danger { background: #f1f1ef; color: var(--err); width: auto; margin-top: 0; }
+  button.wide { background: #f1f1ef; color: var(--text); margin-top: 24px; }
   .msg { color: var(--err); font-size: 15px; min-height: 20px; }
   .empty { color: var(--sub); text-align: center; padding: 24px 0; }
   details { margin-top: 12px; }
@@ -45,8 +46,8 @@
   .info .label { color: var(--sub); display: inline-block; width: 6em; }
   .hist { padding: 8px 0; border-bottom: 1px solid var(--line); }
   .editBox { padding: 8px 0; }
-  .catRow { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
-  .catRow .name { flex: 1; }
+  .listRow { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .listRow .name { flex: 1; }
   /* 片手（右手）で押しやすいよう、主な操作は右側に置く */
   .actions { display: flex; gap: 8px; }
   .actions > button { flex: 1; width: auto; margin-top: 8px; }
@@ -95,7 +96,10 @@
         </select>
       </div>
       <label>カテゴリ
-        <select id="addCat"></select>
+        <select id="add-cat"></select>
+      </label>
+      <label>対象
+        <select id="add-target"></select>
       </label>
       <label>最後に実施した日
         <input id="lastDone" type="date" required>
@@ -109,15 +113,13 @@
 
   <!-- 詳細画面 -->
   <section id="detailView" hidden>
-    <div class="row">
-      <button id="backBtn" class="sub">← 一覧</button>
-    </div>
     <h1 id="dName"></h1>
     <div class="info">
       <div><span class="label">状態</span><span id="dStatus"></span></div>
       <div><span class="label">経過日数</span><span id="dDays"></span></div>
       <div><span class="label">周期</span><span id="dCycle"></span></div>
-      <div id="catRow" hidden><span class="label">カテゴリ</span><span id="dCat"></span></div>
+      <div id="row-cat" hidden><span class="label">カテゴリ</span><span id="val-cat"></span></div>
+      <div id="row-target" hidden><span class="label">対象</span><span id="val-target"></span></div>
       <div>
         <span class="label">最終実施日</span><span id="dLast"></span>
         <button id="editLastBtn" class="sub small">変更</button>
@@ -132,12 +134,21 @@
       </div>
     </div>
 
-    <button id="openCatBtn" class="sub" style="margin-top:8px">🏷️ カテゴリを設定・変更</button>
-    <div id="editCat" class="editBox" hidden>
-      <select id="newCat"></select>
+    <button id="open-cat" class="sub" style="margin-top:8px">🏷️ カテゴリを設定・変更</button>
+    <div id="edit-cat" class="editBox" hidden>
+      <select id="new-cat"></select>
       <div class="actions">
-        <button id="cancelCatBtn" class="sub">キャンセル</button>
-        <button id="saveCatBtn">保存</button>
+        <button id="cancel-cat" class="sub">キャンセル</button>
+        <button id="save-cat">保存</button>
+      </div>
+    </div>
+
+    <button id="open-target" class="sub" style="margin-top:8px">🏷️ 対象を設定・変更</button>
+    <div id="edit-target" class="editBox" hidden>
+      <select id="new-target"></select>
+      <div class="actions">
+        <button id="cancel-target" class="sub">キャンセル</button>
+        <button id="save-target">保存</button>
       </div>
     </div>
 
@@ -154,6 +165,8 @@
     <h2>実施履歴</h2>
     <div id="history"></div>
     <button id="moreBtn" class="sub" hidden>もっと見る</button>
+
+    <button id="backBtn" class="wide">← 一覧に戻る</button>
   </section>
 
   <!-- 設定画面 -->
@@ -162,16 +175,7 @@
       <button id="settingsBackBtn" class="sub">← 一覧</button>
     </div>
     <h1>設定</h1>
-
-    <h2>カテゴリ管理</h2>
-    <div id="catList"></div>
-    <form id="catAddForm">
-      <label>新しいカテゴリ名
-        <input id="newCatName" maxlength="20" required>
-      </label>
-      <button type="submit">＋ カテゴリを追加</button>
-      <p id="catMsg" class="msg"></p>
-    </form>
+    <div id="settingsFrames"></div>
   </section>
 
 </div>
@@ -193,12 +197,25 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const COL = "housework_items";       // 項目
-const HIST = "housework_history";    // 実施履歴（{ itemId, date }）
-const CAT = "housework_categories";  // カテゴリ（{ name, order }）
+const COL = "housework_items";         // 項目
+const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
 
-const DEFAULT_CATS = ["掃除", "メンテナンス", "消耗品・交換", "身の回り", "その他"];
+// 項目に付ける「枠」。カテゴリと対象は別々に管理する
+const FRAMES = [
+  {
+    key: "cat", label: "カテゴリ", coll: "housework_categories", field: "categoryId",
+    seeded: "categoriesSeeded",
+    defaults: ["掃除", "メンテナンス", "消耗品・交換", "身の回り", "その他"]
+  },
+  {
+    key: "target", label: "対象", coll: "housework_targets", field: "targetId",
+    seeded: "targetsSeeded",
+    defaults: ["人の名前", "家", "車"]
+  }
+];
+const frameState = Object.fromEntries(FRAMES.map(f => [f.key, { list: [], unsub: null }]));
+const frameOf = key => FRAMES.find(f => f.key === key);
 
 // ===== 日付の小さな道具 =====
 const DAY = 86400000;
@@ -246,8 +263,6 @@ const ORDER = ["danger", "soon", "normal", "paused"];
 // ===== 画面の状態 =====
 let items = [];
 let unsubscribe = null;
-let cats = [];
-let catUnsub = null;
 let currentId = null;
 let histItems = [];
 let histUnsub = null;
@@ -260,71 +275,75 @@ function showView(name) {
   $("settingsView").hidden = name !== "settings";
 }
 
-// ===== カテゴリ =====
-function catName(id) {
-  const c = cats.find(x => x.id === id);
+// ===== 枠（カテゴリ・対象）の共通処理 =====
+function frameName(f, id) {
+  const c = frameState[f.key].list.find(x => x.id === id);
   return c ? c.name : null;
 }
 
-// 初回だけ、既定のカテゴリを入れる（同じIDで書くので、2台同時でも重複しない）
-async function ensureDefaultCategories() {
+// 初回だけ、既定の選択肢を入れる（同じIDで書くので、2台同時でも重複しない）
+async function ensureDefaults(f) {
   const ref = db.collection(SETTINGS).doc("main");
   const snap = await ref.get();
-  if (snap.exists && snap.data().categoriesSeeded) return;
+  if (snap.exists && snap.data()[f.seeded]) return;
   const batch = db.batch();
-  DEFAULT_CATS.forEach((name, i) => {
-    batch.set(db.collection(CAT).doc(`default-${i + 1}`), { name, order: i + 1 });
+  f.defaults.forEach((name, i) => {
+    batch.set(db.collection(f.coll).doc(`default-${i + 1}`), { name, order: i + 1 });
   });
-  batch.set(ref, { categoriesSeeded: true }, { merge: true });
+  batch.set(ref, { [f.seeded]: true }, { merge: true });
   await batch.commit();
 }
 
-function startCategories() {
-  catUnsub = db.collection(CAT).onSnapshot(
+function startFrame(f) {
+  const st = frameState[f.key];
+  st.unsub = db.collection(f.coll).onSnapshot(
     snap => {
-      cats = snap.docs
+      st.list = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || a.id.localeCompare(b.id));
-      renderCategoryUI();
+      renderFrameUI();
     },
     err => console.error(err)
   );
 }
 
-function stopCategories() {
-  if (catUnsub) catUnsub();
-  catUnsub = null;
-  cats = [];
+function stopFrame(f) {
+  const st = frameState[f.key];
+  if (st.unsub) st.unsub();
+  st.unsub = null;
+  st.list = [];
 }
 
-// カテゴリの選択肢（追加フォーム・詳細の変更欄）と、設定画面の一覧を作り直す
-function renderCategoryUI() {
-  const fill = (sel, keep) => {
-    const cur = sel.value;
-    sel.textContent = "";
-    sel.appendChild(new Option("（なし）", ""));
-    cats.forEach(c => sel.appendChild(new Option(c.name, c.id)));
-    if (keep) sel.value = cur;
-  };
-  fill($("addCat"), true);
-  fill($("newCat"), true);
-  renderCatList();
+// 選択肢（追加フォーム・詳細の変更欄）と、設定画面の一覧を作り直す
+function renderFrameUI() {
+  for (const f of FRAMES) {
+    const list = frameState[f.key].list;
+    for (const sel of [$(`add-${f.key}`), $(`new-${f.key}`)]) {
+      const cur = sel.value;
+      sel.textContent = "";
+      sel.appendChild(new Option("（なし）", ""));
+      list.forEach(c => sel.appendChild(new Option(c.name, c.id)));
+      sel.value = cur;
+    }
+    renderFrameList(f);
+  }
   if (currentId) renderDetail();
 }
 
-function renderCatList() {
-  const box = $("catList");
+function renderFrameList(f) {
+  const box = $(`list-${f.key}`);
+  const list = frameState[f.key].list;
   box.textContent = "";
-  if (!cats.length) {
+  if (!list.length) {
     const p = document.createElement("p");
     p.className = "empty";
-    p.textContent = "カテゴリはまだありません";
+    p.textContent = `${f.label}はまだありません`;
     box.appendChild(p);
     return;
   }
-  for (const c of cats) {
+  for (const c of list) {
     const row = document.createElement("div");
-    row.className = "catRow";
+    row.className = "listRow";
 
     const name = document.createElement("span");
     name.className = "name";
@@ -333,67 +352,89 @@ function renderCatList() {
     const renameBtn = document.createElement("button");
     renameBtn.className = "sub small";
     renameBtn.textContent = "名前変更";
-    renameBtn.addEventListener("click", () => renameCategory(c));
+    renameBtn.addEventListener("click", () => renameFrameItem(f, c));
 
     const delBtn = document.createElement("button");
     delBtn.className = "danger small";
     delBtn.textContent = "削除";
-    delBtn.addEventListener("click", () => deleteCategory(c));
+    delBtn.addEventListener("click", () => deleteFrameItem(f, c));
 
     row.append(name, renameBtn, delBtn);
     box.appendChild(row);
   }
 }
 
-function hasSameName(name, exceptId) {
-  return cats.some(c => c.name === name && c.id !== exceptId);
+function hasSameName(f, name, exceptId) {
+  return frameState[f.key].list.some(c => c.name === name && c.id !== exceptId);
 }
 
-async function renameCategory(c) {
-  $("catMsg").textContent = "";
+async function renameFrameItem(f, c) {
+  const msg = $(`msg-${f.key}`);
+  msg.textContent = "";
   const next = (prompt("新しい名前", c.name) ?? "").trim();
   if (!next || next === c.name) return;
-  if (hasSameName(next, c.id)) { $("catMsg").textContent = "同じ名前のカテゴリがあります"; return; }
+  if (hasSameName(f, next, c.id)) { msg.textContent = "同じ名前があります"; return; }
   try {
-    await db.collection(CAT).doc(c.id).update({ name: next });
+    await db.collection(f.coll).doc(c.id).update({ name: next });
   } catch (err) {
     console.error(err);
-    $("catMsg").textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
+    msg.textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
   }
 }
 
-// 削除：所属する項目はカテゴリなしにする（項目自体は消さない）
-async function deleteCategory(c) {
-  $("catMsg").textContent = "";
-  if (!confirm(`「${c.name}」を削除しますか？\n所属している項目はカテゴリなしになります。`)) return;
+// 削除：所属する項目は未設定にする（項目自体は消さない）
+async function deleteFrameItem(f, c) {
+  const msg = $(`msg-${f.key}`);
+  msg.textContent = "";
+  if (!confirm(`「${c.name}」を削除しますか？\n所属している項目は未設定になります。`)) return;
   try {
     const batch = db.batch();
-    batch.delete(db.collection(CAT).doc(c.id));
-    items.filter(it => it.categoryId === c.id).forEach(it => {
-      batch.update(db.collection(COL).doc(it.id), { categoryId: null });
+    batch.delete(db.collection(f.coll).doc(c.id));
+    items.filter(it => it[f.field] === c.id).forEach(it => {
+      batch.update(db.collection(COL).doc(it.id), { [f.field]: null });
     });
     await batch.commit();
   } catch (err) {
     console.error(err);
-    $("catMsg").textContent = "削除できませんでした。通信状態を確認して、もう一度押してください。";
+    msg.textContent = "削除できませんでした。通信状態を確認して、もう一度押してください。";
   }
 }
 
-$("catAddForm").addEventListener("submit", async e => {
-  e.preventDefault();
-  $("catMsg").textContent = "";
-  const name = $("newCatName").value.trim();
-  if (!name) { $("catMsg").textContent = "カテゴリ名を入力してください"; return; }
-  if (hasSameName(name, null)) { $("catMsg").textContent = "同じ名前のカテゴリがあります"; return; }
-  const order = cats.reduce((m, c) => Math.max(m, c.order ?? 0), 0) + 1;
+async function addFrameItem(f) {
+  const msg = $(`msg-${f.key}`);
+  msg.textContent = "";
+  const input = $(`input-${f.key}`);
+  const name = input.value.trim();
+  if (!name) { msg.textContent = `${f.label}名を入力してください`; return; }
+  if (hasSameName(f, name, null)) { msg.textContent = "同じ名前があります"; return; }
+  const order = frameState[f.key].list.reduce((m, c) => Math.max(m, c.order ?? 0), 0) + 1;
   try {
-    await db.collection(CAT).add({ name, order });
-    $("newCatName").value = "";
+    await db.collection(f.coll).add({ name, order });
+    input.value = "";
   } catch (err) {
     console.error(err);
-    $("catMsg").textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
+    msg.textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
   }
-});
+}
+
+// 設定画面の枠ごとの部品を作る
+function buildSettings() {
+  const root = $("settingsFrames");
+  for (const f of FRAMES) {
+    const h = document.createElement("h2");
+    h.textContent = `${f.label}管理`;
+    const listBox = document.createElement("div");
+    listBox.id = `list-${f.key}`;
+    const form = document.createElement("form");
+    form.id = `form-${f.key}`;
+    form.innerHTML =
+      `<label>新しい${f.label}名<input id="input-${f.key}" maxlength="20" required></label>` +
+      `<button type="submit">＋ ${f.label}を追加</button>` +
+      `<p id="msg-${f.key}" class="msg"></p>`;
+    form.addEventListener("submit", e => { e.preventDefault(); addFrameItem(f); });
+    root.append(h, listBox, form);
+  }
+}
 
 // ===== 一覧の表示 =====
 function render() {
@@ -479,7 +520,7 @@ function openDetail(id) {
   showAllHist = false;
   $("detailMsg").textContent = "";
   $("editLast").hidden = true;
-  $("editCat").hidden = true;
+  for (const f of FRAMES) $(`edit-${f.key}`).hidden = true;
   if (histUnsub) histUnsub();
   histUnsub = db.collection(HIST).where("itemId", "==", id).onSnapshot(
     snap => {
@@ -512,10 +553,12 @@ function renderDetail() {
   $("dCycle").textContent = `${it.cycleCount}${UNIT[it.cycleUnit]}`;
   $("dLast").textContent = showDate(it.lastDone);
 
-  // カテゴリは設定されているときだけ表示する
-  const cname = it.categoryId ? catName(it.categoryId) : null;
-  $("catRow").hidden = !cname;
-  $("dCat").textContent = cname || "";
+  // 枠は設定されているときだけ表示する
+  for (const f of FRAMES) {
+    const name = it[f.field] ? frameName(f, it[f.field]) : null;
+    $(`row-${f.key}`).hidden = !name;
+    $(`val-${f.key}`).textContent = name || "";
+  }
 
   // 一時停止中は「実施した」「一時停止」を隠し、「再開」だけ出す
   $("activeActions").hidden = Boolean(it.paused);
@@ -613,24 +656,24 @@ $("saveLastBtn").addEventListener("click", async () => {
   if (ok) $("editLast").hidden = true;
 });
 
-// カテゴリの設定・変更（「なし」を選ぶと未設定に戻る）
-$("openCatBtn").addEventListener("click", () => {
-  const it = items.find(x => x.id === currentId);
-  if (!it) return;
-  $("newCat").value = it.categoryId || "";
-  $("detailMsg").textContent = "";
-  $("editCat").hidden = false;
-});
-
-$("cancelCatBtn").addEventListener("click", () => {
-  $("editCat").hidden = true;
-});
-
-$("saveCatBtn").addEventListener("click", async () => {
-  const v = $("newCat").value || null;
-  const ok = await updateItem({ categoryId: v });
-  if (ok) $("editCat").hidden = true;
-});
+// 枠ごとの「設定・変更」（「（なし）」を選ぶと未設定に戻る）
+for (const f of FRAMES) {
+  $(`open-${f.key}`).addEventListener("click", () => {
+    const it = items.find(x => x.id === currentId);
+    if (!it) return;
+    $(`new-${f.key}`).value = it[f.field] || "";
+    $("detailMsg").textContent = "";
+    $(`edit-${f.key}`).hidden = false;
+  });
+  $(`cancel-${f.key}`).addEventListener("click", () => {
+    $(`edit-${f.key}`).hidden = true;
+  });
+  $(`save-${f.key}`).addEventListener("click", async () => {
+    const v = $(`new-${f.key}`).value || null;
+    const ok = await updateItem({ [f.field]: v });
+    if (ok) $(`edit-${f.key}`).hidden = true;
+  });
+}
 
 // ===== 項目の追加 =====
 $("addForm").addEventListener("submit", async e => {
@@ -644,12 +687,14 @@ $("addForm").addEventListener("submit", async e => {
   if (!Number.isInteger(count) || count < 1) { msg.textContent = "周期は1以上の整数で入力してください"; return; }
 
   const lastDone = $("lastDone").value;
+  const frameFields = {};
+  for (const f of FRAMES) frameFields[f.field] = $(`add-${f.key}`).value || null;
   try {
     await db.collection(COL).add({
       name,
       cycleCount: count,
       cycleUnit: $("cycleUnit").value,
-      categoryId: $("addCat").value || null,
+      ...frameFields,
       lastDone,
       startDate: lastDone,
       paused: false
@@ -657,7 +702,7 @@ $("addForm").addEventListener("submit", async e => {
     $("name").value = "";
     $("cycleCount").value = 1;
     $("cycleUnit").value = "w";
-    $("addCat").value = "";
+    for (const f of FRAMES) $(`add-${f.key}`).value = "";
     $("lastDone").value = fmt(today());
   } catch (err) {
     console.error(err);
@@ -666,7 +711,10 @@ $("addForm").addEventListener("submit", async e => {
 });
 
 // ===== 画面の移動 =====
-$("settingsBtn").addEventListener("click", () => { $("catMsg").textContent = ""; showView("settings"); });
+$("settingsBtn").addEventListener("click", () => {
+  for (const f of FRAMES) $(`msg-${f.key}`).textContent = "";
+  showView("settings");
+});
 $("settingsBackBtn").addEventListener("click", () => showView("list"));
 
 // ===== ログイン・ログアウト =====
@@ -684,21 +732,27 @@ $("loginForm").addEventListener("submit", async e => {
 
 $("logoutBtn").addEventListener("click", () => auth.signOut());
 
+buildSettings();
+
 auth.onAuthStateChanged(async user => {
   if (user) {
     showView("list");
     $("lastDone").value = fmt(today());
     if (!unsubscribe) startListening();
-    if (!catUnsub) startCategories();
-    try {
-      await ensureDefaultCategories();
-    } catch (err) {
-      console.error(err);
+    for (const f of FRAMES) {
+      if (!frameState[f.key].unsub) startFrame(f);
+    }
+    for (const f of FRAMES) {
+      try {
+        await ensureDefaults(f);
+      } catch (err) {
+        console.error(err);
+      }
     }
   } else {
     closeDetail();
     stopListening();
-    stopCategories();
+    for (const f of FRAMES) stopFrame(f);
     showView("login");
   }
 });
