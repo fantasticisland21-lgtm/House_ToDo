@@ -52,14 +52,28 @@ function nextFixed(afterMs, day) {
   }
 }
 
+// 毎年○月○日の期日（UTC）
+function nextYearlyUTC(afterMs, month, day) {
+  const a = new Date(afterMs);
+  for (let i = 0; i < 2; i++) {
+    const y = a.getUTCFullYear() + i;
+    const last = new Date(Date.UTC(y, month, 0)).getUTCDate();
+    const cand = Date.UTC(y, month - 1, Math.min(day, last));
+    if (cand > afterMs) return cand;
+  }
+}
+
 // アプリ本体と同じ判定：1周期後で「そろそろ」、2周期後で「やばい」
 function judge(item, t) {
   if (item.paused) return "paused";
   const base = parse(item.startDate || item.lastDone);
-  if (item.cycleUnit === "f") {
-    // 毎月○日：実施日に関係なく、決まった日が期日になる
-    const d1 = nextFixed(base, item.cycleCount);
-    const d2 = nextFixed(d1, item.cycleCount);
+  if (item.cycleUnit === "f" || item.cycleUnit === "fy") {
+    // 毎月・毎年：実施日に関係なく、決まった日が期日になる
+    const next = (after) => item.cycleUnit === "fy"
+      ? nextYearlyUTC(after, item.cycleMonth, item.cycleCount)
+      : nextFixed(after, item.cycleCount);
+    const d1 = next(base);
+    const d2 = next(d1);
     if (t >= d2) return "danger";
     if (t >= d1) return "soon";
     return "normal";

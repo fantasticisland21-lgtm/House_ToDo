@@ -107,9 +107,11 @@
       <div class="field">
         <span class="flabel">周期</span>
         <div class="ctrl2">
+          <input id="cycleMonth" type="number" min="1" max="12" step="1" placeholder="月" hidden>
           <input id="cycleCount" type="number" min="1" step="1" value="1" required>
           <select id="cycleUnit">
             <option value="f">毎月（数字＝日）</option>
+            <option value="fy">毎年（月と日）</option>
             <option value="d">日</option>
             <option value="w" selected>週間</option>
             <option value="m">ヶ月</option>
@@ -165,9 +167,11 @@
 
     <div id="editCycle" class="editBox" hidden>
       <div class="row">
+        <input id="newCycleMonth" type="number" min="1" max="12" step="1" placeholder="月" hidden>
         <input id="newCycleCount" type="number" min="1" step="1">
         <select id="newCycleUnit">
           <option value="f">毎月（数字＝日）</option>
+          <option value="fy">毎年（月と日）</option>
           <option value="d">日</option>
           <option value="w">週間</option>
           <option value="m">ヶ月</option>
@@ -273,7 +277,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.4";             // 変更するたびに上げる
+const APP_VERSION = "2.5";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -314,7 +318,7 @@ function addPeriod(base, unit, count) {
 
 // 毎月○日の項目の、次の期日と残り日数
 function dueInfo(it) {
-  const due = nextFixed(parse(it.startDate || it.lastDone), it.cycleCount);
+  const due = nextDue(it, parse(it.startDate || it.lastDone));
   const left = Math.round((due - today()) / DAY);
   return { due, left };
 }
@@ -323,6 +327,28 @@ function dueLeftText(left) {
   if (left > 0) return `あと${left}日`;
   if (left === 0) return "今日が期日";
   return `${-left}日過ぎ`;
+}
+
+// 毎月・毎年の期日かどうか
+function isFixed(it) {
+  return it.cycleUnit === "f" || it.cycleUnit === "fy";
+}
+
+// 毎月○日・毎年○月○日の、基準日より後の次の期日
+function nextDue(it, after) {
+  return it.cycleUnit === "fy"
+    ? nextYearly(after, it.cycleMonth, it.cycleCount)
+    : nextFixed(after, it.cycleCount);
+}
+
+// 毎年○月○日の期日：基準日より後で、最初に来る日（2月29日は、平年なら2月末日にする）
+function nextYearly(after, month, day) {
+  for (let i = 0; i < 2; i++) {
+    const y = after.getFullYear() + i;
+    const last = new Date(y, month, 0).getDate();
+    const cand = new Date(y, month - 1, Math.min(day, last));
+    if (cand > after) return cand;
+  }
 }
 
 // 毎月○日の期日：基準日より後で、最初に来る「○日」（月末を超える日は末日にする）
@@ -347,10 +373,10 @@ function judge(item) {
   const base = parse(item.startDate || item.lastDone);
   const t = today();
   let next1, next2;
-  if (item.cycleUnit === "f") {
-    // 毎月○日：実施日に関係なく、決まった日が期日になる
-    next1 = nextFixed(base, item.cycleCount);
-    next2 = nextFixed(next1, item.cycleCount);
+  if (isFixed(item)) {
+    // 毎月・毎年：実施日に関係なく、決まった日が期日になる
+    next1 = nextDue(item, base);
+    next2 = nextDue(item, next1);
   } else {
     next1 = addPeriod(base, item.cycleUnit, item.cycleCount);
     next2 = addPeriod(base, item.cycleUnit, item.cycleCount * 2);
@@ -369,7 +395,9 @@ const ORDER = ["danger", "soon", "normal", "paused"];
 
 // 周期の表示（「毎月」は、数字を日付として扱う）
 function cycleText(it) {
-  return it.cycleUnit === "f" ? `毎月${it.cycleCount}日` : `${it.cycleCount}${UNIT[it.cycleUnit]}`;
+  if (it.cycleUnit === "f") return `毎月${it.cycleCount}日`;
+  if (it.cycleUnit === "fy") return `毎年${it.cycleMonth}月${it.cycleCount}日`;
+  return `${it.cycleCount}${UNIT[it.cycleUnit]}`;
 }
 
 // ===== 画面の状態 =====
@@ -605,7 +633,7 @@ function render() {
       const days = document.createElement("span");
       days.className = "days";
       // 毎月○日の項目は、経過日数ではなく期日までの日数を出す
-      days.textContent = (it.cycleUnit === "f" && !it.paused)
+      days.textContent = (isFixed(it) && !it.paused)
         ? dueLeftText(dueInfo(it).left)
         : `${it.days}日`;
 
@@ -744,7 +772,7 @@ function renderDetail() {
 
   $("dName").textContent = it.name;
   $("dStatus").textContent = `${ICON[j.key]} ${LABEL[j.key]}`;
-  if (it.cycleUnit === "f" && !it.paused) {
+  if (isFixed(it) && !it.paused) {
     const d = dueInfo(it);
     $("dDaysLabel").textContent = "次の期日";
     $("dDays").textContent = `${showDate(fmt(d.due))}（${dueLeftText(d.left)}）`;
@@ -840,12 +868,22 @@ $("resumeBtn").addEventListener("click", async () => {
   await updateItem({ paused: false, pausedDays: 0, startDate: fmt(today()) });
 });
 
+// 「毎年」を選んだときだけ、月の欄を出す
+$("cycleUnit").addEventListener("change", () => {
+  $("cycleMonth").hidden = $("cycleUnit").value !== "fy";
+});
+$("newCycleUnit").addEventListener("change", () => {
+  $("newCycleMonth").hidden = $("newCycleUnit").value !== "fy";
+});
+
 // 周期の変更：計測開始日はそのままにして、新しい周期で状態を計算し直す
 $("editCycleBtn").addEventListener("click", () => {
   const it = items.find(x => x.id === currentId);
   if (!it) return;
   $("newCycleCount").value = it.cycleCount;
   $("newCycleUnit").value = it.cycleUnit;
+  $("newCycleMonth").value = it.cycleMonth || "";
+  $("newCycleMonth").hidden = it.cycleUnit !== "fy";
   $("detailMsg").textContent = "";
   $("editCycle").hidden = false;
 });
@@ -857,11 +895,13 @@ $("cancelCycleBtn").addEventListener("click", () => {
 $("saveCycleBtn").addEventListener("click", async () => {
   const count = Number($("newCycleCount").value);
   const unit = $("newCycleUnit").value;
-  if (!Number.isInteger(count) || count < 1 || (unit === "f" && count > 31)) {
+  const month = Number($("newCycleMonth").value);
+  const badMonth = unit === "fy" && (!Number.isInteger(month) || month < 1 || month > 12);
+  if (!Number.isInteger(count) || count < 1 || ((unit === "f" || unit === "fy") && count > 31) || badMonth) {
     $("detailMsg").textContent = "周期は1以上の整数で入力してください（毎月の日付は1〜31）";
     return;
   }
-  const ok = await updateItem({ cycleCount: count, cycleUnit: $("newCycleUnit").value });
+  const ok = await updateItem({ cycleCount: count, cycleUnit: unit, cycleMonth: unit === "fy" ? month : null });
   if (ok) $("editCycle").hidden = true;
 });
 
@@ -974,7 +1014,9 @@ $("addForm").addEventListener("submit", async e => {
   const count = Number($("cycleCount").value);
   if (!name) { msg.textContent = "項目名を入力してください"; return; }
   const unit = $("cycleUnit").value;
-  if (!Number.isInteger(count) || count < 1 || (unit === "f" && count > 31)) {
+  const month = Number($("cycleMonth").value);
+  const badMonth = unit === "fy" && (!Number.isInteger(month) || month < 1 || month > 12);
+  if (!Number.isInteger(count) || count < 1 || ((unit === "f" || unit === "fy") && count > 31) || badMonth) {
     msg.textContent = "周期は1以上の整数で入力してください（毎月の日付は1〜31）";
     return;
   }
@@ -987,6 +1029,7 @@ $("addForm").addEventListener("submit", async e => {
       name,
       cycleCount: count,
       cycleUnit: $("cycleUnit").value,
+      cycleMonth: unit === "fy" ? month : null,
       ...frameFields,
       lastDone,
       startDate: lastDone,
@@ -996,6 +1039,7 @@ $("addForm").addEventListener("submit", async e => {
     $("name").value = "";
     $("cycleCount").value = 1;
     $("cycleUnit").value = "w";
+    $("cycleMonth").hidden = true;
     for (const f of FRAMES) $(`add-${f.key}`).value = "";
     $("memo").value = "";
     $("lastDone").value = fmt(today());
