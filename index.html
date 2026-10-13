@@ -277,7 +277,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.5";             // 変更するたびに上げる
+const APP_VERSION = "2.6";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -1037,7 +1037,7 @@ $("addForm").addEventListener("submit", async e => {
       paused: false
     });
     $("name").value = "";
-    $("cycleCount").value = 1;
+    $("cycleCount").value = "";
     $("cycleUnit").value = "w";
     $("cycleMonth").hidden = true;
     for (const f of FRAMES) $(`add-${f.key}`).value = "";
