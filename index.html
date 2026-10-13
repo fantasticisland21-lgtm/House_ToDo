@@ -57,7 +57,9 @@
   .spacer { flex: 1; }
   .ver { font-size: 12px; color: var(--sub); font-weight: 400; }
   .unset { color: var(--sub); }
-  .tag { font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
+  /* 一覧：丸・対象・タスク名の位置を、どの行でもそろえる */
+  .item > span:first-child { flex: none; width: 1.4em; text-align: center; }
+  .tag { flex: none; width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 4px; }
   .notice { background: #fbf6e9; border-radius: 8px; padding: 10px 12px; margin: 8px 0 4px; }
   .noticeTitle { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
   .noticeRow { padding: 6px 0; cursor: pointer; }
@@ -277,7 +279,7 @@ const db = firebase.firestore();
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.6";             // 変更するたびに上げる
+const APP_VERSION = "2.7";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -622,7 +624,8 @@ function render() {
       const tag = document.createElement("span");
       tag.className = "tag";
       tag.textContent = tName || "";
-      tag.hidden = !tName;
+      // 対象がなくても場所は空けておき、タスク名の開始位置をそろえる
+      tag.style.visibility = tName ? "visible" : "hidden";
 
       const left = document.createElement("div");
       left.style.flex = "1";
