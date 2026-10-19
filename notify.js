@@ -73,7 +73,10 @@ function judge(item, t) {
     const next = (after) => item.cycleUnit === "fy"
       ? nextYearlyUTC(after, item.cycleMonth, item.cycleCount)
       : nextFixed(after, item.cycleCount);
-    const d1 = next(base);
+    // 期日の近く（周期の半分以内）より前に実施していたら、その回は済みにする（アプリと同じ）
+    const first = next(base);
+    const early = item.cycleUnit === "fy" ? 183 : 15;
+    const d1 = Math.round((first - base) / 86400000) < early ? next(first) : first;
     const d2 = next(d1);
     if (t >= d2) return "danger";
     if (t >= d1) return "soon";
@@ -115,7 +118,7 @@ async function main() {
         const res = await messaging.sendEachForMulticast({
           tokens,
           data: {
-            title: `${key === "danger" ? "🔴" : "🟡"} ${it.name}`,
+            title: it.name,
             body: `${LABEL[key]}になりました`,
             url: APP_URL
           }

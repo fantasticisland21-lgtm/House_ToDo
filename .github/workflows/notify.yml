@@ -2,7 +2,7 @@ name: 通知チェック
 
 on:
   schedule:
-    - cron: "0 * * * *"   # 1時間ごと（UTC）
+    - cron: "50 22 * * *"   # 毎朝1回、日本時間7:50ごろ（UTCで22:50）
   workflow_dispatch:       # 手動でも実行できる
 
 permissions:

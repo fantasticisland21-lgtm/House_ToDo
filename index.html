@@ -70,8 +70,12 @@
   .spacer { flex: 1; }
   .ver { font-size: 12px; color: var(--sub); font-weight: 400; }
   .unset { color: var(--sub); }
-  /* 一覧：丸・対象・タスク名の位置を、どの行でもそろえる */
-  .item > span:first-child { flex: none; width: 1.4em; text-align: center; }
+  /* 状態のラベル（薄い色の札） */
+  .badge { display: inline-block; font-size: 13px; font-weight: 600; border-radius: 6px; padding: 2px 8px; margin-right: 6px; }
+  .badge.danger { background: #fdebec; color: #9f2f2d; }
+  .badge.soon { background: #fbf3db; color: #956400; }
+  .badge.normal, .badge.paused { background: #f1f1ef; color: #73726e; }
+  .count { color: var(--sub); font-weight: 400; font-size: 15px; }
   .tag { flex: none; width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 4px; }
   .notice { background: #fbf6e9; border-radius: 8px; padding: 10px 12px; margin: 8px 0 4px; }
   .noticeTitle { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
@@ -114,7 +118,8 @@
 
     <div id="notice" class="notice" hidden></div>
 
-    <form id="addForm">
+    <button id="openAddBtn">＋ 項目を追加</button>
+    <form id="addForm" hidden>
       <div class="field">
         <span class="flabel">項目名</span>
         <input id="name" maxlength="50" placeholder="例：お風呂掃除" required>
@@ -150,7 +155,10 @@
         <span class="flabel">メモ</span>
         <textarea id="memo" maxlength="500" rows="2"></textarea>
       </div>
-      <button type="submit">＋ 追加</button>
+      <div class="actions">
+        <button type="button" id="closeAddBtn" class="sub">閉じる</button>
+        <button type="submit">＋ 追加</button>
+      </div>
       <p id="addMsg" class="msg"></p>
     </form>
 
@@ -297,7 +305,7 @@ db.enablePersistence({ synchronizeTabs: true }).catch(err => console.error(err))
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.10";             // 変更するたびに上げる
+const APP_VERSION = "2.11";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -339,7 +347,7 @@ function addPeriod(base, unit, count) {
 // 毎月○日の項目の、次の期日と残り日数
 function dueInfo(it) {
   if (!(it.startDate || it.lastDone)) return { due: today(), left: 0 };
-  const due = nextDue(it, parse(it.startDate || it.lastDone));
+  const due = firstDue(it, parse(it.startDate || it.lastDone));
   const left = Math.round((due - today()) / DAY);
   return { due, left };
 }
@@ -353,6 +361,14 @@ function dueLeftText(left) {
 // 毎月・毎年の期日かどうか
 function isFixed(it) {
   return it.cycleUnit === "f" || it.cycleUnit === "fy";
+}
+
+// 毎月・毎年の項目の「今回の期日」。期日の近く（周期の半分以内）より前に実施していたら、
+// その回は済んだものとして、次の回を期日にする
+const EARLY_DAYS = { f: 15, fy: 183 };
+function firstDue(it, base) {
+  const d = nextDue(it, base);
+  return Math.round((d - base) / DAY) < EARLY_DAYS[it.cycleUnit] ? nextDue(it, d) : d;
 }
 
 // 毎月○日・毎年○月○日の、基準日より後の次の期日
@@ -397,7 +413,7 @@ function judge(item) {
   let next1, next2;
   if (isFixed(item)) {
     // 毎月・毎年：実施日に関係なく、決まった日が期日になる
-    next1 = nextDue(item, base);
+    next1 = firstDue(item, base);
     next2 = nextDue(item, next1);
   } else {
     next1 = addPeriod(base, item.cycleUnit, item.cycleCount);
@@ -410,7 +426,13 @@ function judge(item) {
   return { key, days };
 }
 
-const ICON = { danger: "🔴", soon: "🟡", normal: "⚪", paused: "⏸️" };
+// 状態を薄い色のラベルで出す
+function badge(key) {
+  const b = document.createElement("span");
+  b.className = `badge ${key}`;
+  b.textContent = LABEL[key];
+  return b;
+}
 const LABEL = { danger: "やばい", soon: "そろそろ", normal: "通常", paused: "一時停止中" };
 const UNIT = { d: "日", w: "週間", m: "ヶ月", y: "年" };
 const ORDER = ["danger", "soon", "normal", "paused"];
@@ -626,16 +648,16 @@ function render() {
     const details = document.createElement("details");
     details.open = key !== "normal";
     const summary = document.createElement("summary");
-    summary.textContent = `${ICON[key]} ${LABEL[key]}（${group.length}件）`;
+    const cnt = document.createElement("span");
+    cnt.className = "count";
+    cnt.textContent = `${group.length}件`;
+    summary.append(badge(key), cnt);
     details.appendChild(summary);
 
     for (const it of group) {
       const row = document.createElement("div");
       row.className = "item";
       row.addEventListener("click", () => openDetail(it.id));
-
-      const icon = document.createElement("span");
-      icon.textContent = ICON[key];
 
       // 丸とタスク名の間に、対象の名前を小さく表示する
       const tName = it.targetId ? frameName(frameOf("target"), it.targetId) : null;
@@ -658,7 +680,7 @@ function render() {
         ? dueLeftText(dueInfo(it).left)
         : `${it.days}日`;
 
-      row.append(icon, tag, left, days);
+      row.append(tag, left, days);
       details.appendChild(row);
     }
     list.appendChild(details);
@@ -746,7 +768,9 @@ function renderNotice() {
   for (const n of notices) {
     const row = document.createElement("div");
     row.className = "noticeRow";
-    row.textContent = `${ICON[n.key]} ${n.name}：${LABEL[n.key]}`;
+    const nm = document.createElement("span");
+    nm.textContent = n.name;
+    row.append(badge(n.key), nm);
     row.addEventListener("click", () => openDetail(n.id));
     box.appendChild(row);
   }
@@ -794,7 +818,8 @@ function renderDetail() {
   const j = judge(it);
 
   $("dName").textContent = it.name;
-  $("dStatus").textContent = `${ICON[j.key]} ${LABEL[j.key]}`;
+  $("dStatus").textContent = "";
+  $("dStatus").appendChild(badge(j.key));
   if (isFixed(it) && !it.paused) {
     const d = dueInfo(it);
     $("dDaysLabel").textContent = "次の期日";
@@ -1043,6 +1068,16 @@ $("deleteBtn").addEventListener("click", async () => {
 });
 
 // ===== 項目の追加 =====
+// 追加フォームは、ふだんは閉じておき、「＋ 項目を追加」で開く
+function setAddOpen(open) {
+  $("addForm").hidden = !open;
+  $("openAddBtn").hidden = open;
+  $("addMsg").textContent = "";
+  if (open) $("name").focus();
+}
+$("openAddBtn").addEventListener("click", () => setAddOpen(true));
+$("closeAddBtn").addEventListener("click", () => setAddOpen(false));
+
 $("addForm").addEventListener("submit", async e => {
   e.preventDefault();
   const msg = $("addMsg");
@@ -1086,6 +1121,7 @@ $("addForm").addEventListener("submit", async e => {
     for (const f of FRAMES) $(`add-${f.key}`).value = "";
     $("memo").value = "";
     $("lastDone").value = fmt(today());
+    setAddOpen(false);
   } catch (err) {
     console.error(err);
     msg.textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
