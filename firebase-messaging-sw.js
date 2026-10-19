@@ -1,4 +1,19 @@
 // 通知を受け取るための裏方のファイル（リポジトリの一番上に置く）
+
+// 届いた通知は、アプリを開いているときも閉じているときも、必ずここで1回だけ表示する
+// （iPhoneは、表示しない通知が続くと通知を止めてしまうため）
+self.addEventListener("push", event => {
+  let p = {};
+  try { p = event.data ? event.data.json() : {}; } catch (e) { p = {}; }
+  const d = p.data || p.notification || {};
+  event.waitUntil(
+    self.registration.showNotification(d.title || "Home To Do", {
+      body: d.body || "",
+      data: { url: d.url || "./" }
+    })
+  );
+});
+
 importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js");
 
@@ -11,20 +26,18 @@ firebase.initializeApp({
   appId: "1:956040670932:web:ee3b3d87e7f7e14b2ad541"
 });
 
-const messaging = firebase.messaging();
+// 通知の登録（トークン）のために読み込む。表示は上の push で行うので、ここでは表示しない
+firebase.messaging();
 
-// データだけで届くので、ここで1回だけ通知を表示する
-messaging.onBackgroundMessage(payload => {
-  const d = payload.data || {};
-  self.registration.showNotification(d.title || "Home To Do", {
-    body: d.body || "",
-    data: { url: d.url || "./" }
-  });
-});
-
-// 通知をタップしたら、アプリを開く
+// 通知をタップしたら、アプリを開く（開いていれば、その画面に切り替える）
 self.addEventListener("notificationclick", event => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || "./";
-  event.waitUntil(clients.openWindow(url));
+  event.waitUntil((async () => {
+    const list = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of list) {
+      if ("focus" in c) return c.focus();
+    }
+    return clients.openWindow(url);
+  })());
 });

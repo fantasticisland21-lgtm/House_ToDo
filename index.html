@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Home To Do">
 <title>Home To Do</title>
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=1">
@@ -17,9 +19,12 @@
     margin: 0; color: var(--text); background: #fff; font-size: 17px; line-height: 1.5;
     font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
   }
-  .wrap { max-width: 560px; margin: 0 auto; padding: 16px; }
+  .wrap {
+    max-width: 560px; margin: 0 auto;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
   [hidden] { display: none !important; }
-  h1 { font-size: 24px; margin: 12px 0 16px; }
+  h1 { font-size: 24px; margin: 12px 0 16px; min-width: 0; overflow-wrap: anywhere; }
   h2 { font-size: 17px; margin: 24px 0 8px; }
   label { display: block; margin-top: 8px; font-size: 15px; color: var(--sub); }
   input, select {
@@ -33,8 +38,9 @@
     width: 100%; font-size: 17px; padding: 12px 16px; margin-top: 8px;
     border: none; border-radius: 8px; background: var(--btn); color: #fff;
   }
+  button:disabled { opacity: .5; }
   button.sub { background: #f1f1ef; color: var(--text); width: auto; margin-top: 0; }
-  button.small { width: auto; margin: 0 0 0 8px; padding: 4px 10px; font-size: 14px; }
+  button.small { width: auto; margin: 0 0 0 8px; padding: 8px 14px; font-size: 14px; min-height: 44px; min-width: 44px; }
   button.danger { background: #f1f1ef; color: var(--err); width: auto; margin-top: 0; }
   button.wide { background: #f1f1ef; color: var(--text); margin-top: 24px; }
   .msg { color: var(--err); font-size: 15px; min-height: 20px; }
@@ -49,11 +55,14 @@
   .meta { color: var(--sub); font-size: 14px; }
   .info > div { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .info .label { color: var(--sub); display: inline-block; width: 6em; }
-  .info .label + span { flex: 1; }
+  .info .label + span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .itemName { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  #editCycle .row > * { min-width: 0; }
   .hist { padding: 8px 0; border-bottom: 1px solid var(--line); }
   .editBox { padding: 8px 0; }
   .listRow { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
-  .listRow .name { flex: 1; }
+  .listRow .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .listRow button.danger.small { margin-left: 16px; }
   /* 片手（右手）で押しやすいよう、主な操作は右側に置く */
   .actions { display: flex; gap: 8px; }
   .actions > button { flex: 1; width: auto; margin-top: 8px; }
@@ -66,7 +75,7 @@
   .tag { flex: none; width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 13px; color: var(--text); background: #f1f1ef; border-radius: 6px; padding: 2px 4px; }
   .notice { background: #fbf6e9; border-radius: 8px; padding: 10px 12px; margin: 8px 0 4px; }
   .noticeTitle { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-  .noticeRow { padding: 6px 0; cursor: pointer; }
+  .noticeRow { padding: 10px 0; cursor: pointer; }
   .memo { white-space: pre-wrap; background: #fafaf8; border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 15px; }
   /* 追加画面：「ラベル → 入力欄」を横に並べ、位置と幅をそろえる */
   #addForm .field { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
@@ -83,7 +92,7 @@
 
   <!-- ログイン画面 -->
   <section id="loginView" hidden>
-    <h1>Home To Do</h1>
+    <h1>Home To Do <small id="loginVer" class="ver"></small></h1>
     <form id="loginForm">
       <label>メールアドレス
         <input id="email" type="email" autocomplete="username" required>
@@ -150,6 +159,9 @@
 
   <!-- 詳細画面 -->
   <section id="detailView" hidden>
+    <div class="row">
+      <button id="detailTopBackBtn" class="sub" style="flex:none">← 一覧</button>
+    </div>
     <div class="row">
       <h1 id="dName" style="flex:1"></h1>
       <button id="editNameBtn" class="sub small" style="flex:none;white-space:nowrap">変更</button>
@@ -253,7 +265,7 @@
 
     <h2>通知</h2>
     <p class="meta">ホーム画面のアイコンから開いて、通知を許可してください。</p>
-    <button id="pushBtn">🔔 このiPhoneで通知を受け取る</button>
+    <button id="pushBtn">🔔 この端末で通知を受け取る</button>
     <p id="pushMsg" class="msg"></p>
 
     <h2>アカウント</h2>
@@ -280,10 +292,12 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+// 電波が弱いときも、保存した内容を端末に残して、つながったら送る
+db.enablePersistence({ synchronizeTabs: true }).catch(err => console.error(err));
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.9";             // 変更するたびに上げる
+const APP_VERSION = "2.10";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -324,6 +338,7 @@ function addPeriod(base, unit, count) {
 
 // 毎月○日の項目の、次の期日と残り日数
 function dueInfo(it) {
+  if (!(it.startDate || it.lastDone)) return { due: today(), left: 0 };
   const due = nextDue(it, parse(it.startDate || it.lastDone));
   const left = Math.round((due - today()) / DAY);
   return { due, left };
@@ -376,6 +391,7 @@ function judge(item) {
   if (item.paused) {
     return { key: "paused", days: item.pausedDays ?? 0 };
   }
+  if (!(item.startDate || item.lastDone)) return { key: "normal", days: 0 }; // 日付がない古いデータで止まらないように
   const base = parse(item.startDate || item.lastDone);
   const t = today();
   let next1, next2;
@@ -538,12 +554,10 @@ async function deleteFrameItem(f, c) {
   msg.textContent = "";
   if (!confirm(`「${c.name}」を削除しますか？\n所属している項目は未設定になります。`)) return;
   try {
-    const batch = db.batch();
-    batch.delete(db.collection(f.coll).doc(c.id));
-    items.filter(it => it[f.field] === c.id).forEach(it => {
-      batch.update(db.collection(COL).doc(it.id), { [f.field]: null });
-    });
-    await batch.commit();
+    const ops = items.filter(it => it[f.field] === c.id)
+      .map(it => b => b.update(db.collection(COL).doc(it.id), { [f.field]: null }));
+    ops.push(b => b.delete(db.collection(f.coll).doc(c.id)));
+    await commitInChunks(ops);
   } catch (err) {
     console.error(err);
     msg.textContent = "削除できませんでした。通信状態を確認して、もう一度押してください。";
@@ -632,7 +646,7 @@ function render() {
       tag.style.visibility = tName ? "visible" : "hidden";
 
       const left = document.createElement("div");
-      left.style.flex = "1";
+      left.className = "itemName";
       const title = document.createElement("div");
       title.textContent = it.name;
       left.append(title);
@@ -661,7 +675,9 @@ function startListening() {
     },
     err => {
       console.error(err);
-      $("list").textContent = "データを読み込めませんでした。通信状態を確認して、開き直してください。";
+      $("list").textContent = err.code === "permission-denied"
+        ? "このアカウントには使う権限がありません。"
+        : "データを読み込めませんでした。通信状態を確認して、開き直してください。";
     }
   );
 }
@@ -788,7 +804,7 @@ function renderDetail() {
     $("dDays").textContent = `${j.days}日`;
   }
   $("dCycle").textContent = cycleText(it);
-  $("dLast").textContent = showDate(it.lastDone);
+  $("dLast").textContent = it.lastDone ? showDate(it.lastDone) : "未設定";
 
   // 枠は常に表示し、未設定のときは「未設定」と出す
   for (const f of FRAMES) {
@@ -825,7 +841,17 @@ function renderDetail() {
 }
 
 $("backBtn").addEventListener("click", closeDetail);
+$("detailTopBackBtn").addEventListener("click", closeDetail);
 $("moreBtn").addEventListener("click", () => { showAllHist = true; renderDetail(); });
+
+// たくさんの削除・更新は、450件ずつに分けて保存する（1回の上限が500件のため）
+async function commitInChunks(ops) {
+  for (let i = 0; i < ops.length; i += 450) {
+    const batch = db.batch();
+    ops.slice(i, i + 450).forEach(op => op(batch));
+    await batch.commit();
+  }
+}
 
 // 共通：項目の更新を保存。成功なら true、失敗ならメッセージを出して false
 async function updateItem(fields) {
@@ -849,15 +875,21 @@ $("doneBtn").addEventListener("click", async () => {
   $("detailMsg").textContent = "";
   if (!confirm("実施しましたか？")) return;
 
+  const btn = $("doneBtn");
+  if (btn.disabled) return;
+  btn.disabled = true;
   const dateStr = fmt(today());
   try {
     const batch = db.batch();
     batch.update(db.collection(COL).doc(it.id), { lastDone: dateStr, startDate: dateStr });
-    batch.set(db.collection(HIST).doc(), { itemId: it.id, date: dateStr });
+    // 履歴のIDを「項目_日付」にして、同じ日に2回押しても1件にする
+    batch.set(db.collection(HIST).doc(`${it.id}_${dateStr}`), { itemId: it.id, date: dateStr });
     await batch.commit();
   } catch (err) {
     console.error(err);
     $("detailMsg").textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -903,7 +935,7 @@ $("saveCycleBtn").addEventListener("click", async () => {
   const count = Number($("newCycleCount").value);
   const unit = $("newCycleUnit").value;
   const month = Number($("newCycleMonth").value);
-  const badMonth = unit === "fy" && (!Number.isInteger(month) || month < 1 || month > 12);
+  const badMonth = unit === "fy" && (!Number.isInteger(month) || month < 1 || month > 12 || count > new Date(2024, month, 0).getDate());
   if (!Number.isInteger(count) || count < 1 || ((unit === "f" || unit === "fy") && count > 31) || badMonth) {
     $("detailMsg").textContent = "周期は1以上の整数で入力してください（毎月の日付は1〜31）";
     return;
@@ -1000,10 +1032,9 @@ $("deleteBtn").addEventListener("click", async () => {
   if (!confirm(`「${it.name}」を削除しますか？\n実施履歴もすべて消えて、元に戻せません。`)) return;
   try {
     const hist = await db.collection(HIST).where("itemId", "==", it.id).get();
-    const batch = db.batch();
-    hist.docs.forEach(d => batch.delete(d.ref));
-    batch.delete(db.collection(COL).doc(it.id));
-    await batch.commit();
+    // 履歴を先に消し、最後に項目本体を消す（途中で止まっても、項目は残ってやり直せる）
+    await commitInChunks(hist.docs.map(d => b => b.delete(d.ref)));
+    await db.collection(COL).doc(it.id).delete();
     closeDetail();
   } catch (err) {
     console.error(err);
@@ -1022,15 +1053,20 @@ $("addForm").addEventListener("submit", async e => {
   if (!name) { msg.textContent = "項目名を入力してください"; return; }
   const unit = $("cycleUnit").value;
   const month = Number($("cycleMonth").value);
-  const badMonth = unit === "fy" && (!Number.isInteger(month) || month < 1 || month > 12);
+  const badMonth = unit === "fy" && (!Number.isInteger(month) || month < 1 || month > 12 || count > new Date(2024, month, 0).getDate());
   if (!Number.isInteger(count) || count < 1 || ((unit === "f" || unit === "fy") && count > 31) || badMonth) {
     msg.textContent = "周期は1以上の整数で入力してください（毎月の日付は1〜31）";
     return;
   }
 
   const lastDone = $("lastDone").value;
+  if (!lastDone) { msg.textContent = "最終実施日を入力してください"; return; }
+  if (lastDone > fmt(today())) { msg.textContent = "今日より後の日付は選べません"; return; }
   const frameFields = {};
   for (const f of FRAMES) frameFields[f.field] = $(`add-${f.key}`).value || null;
+  const btn = $("addForm").querySelector("button[type=submit]");
+  if (btn.disabled) return;
+  btn.disabled = true;
   try {
     await db.collection(COL).add({
       name,
@@ -1044,7 +1080,7 @@ $("addForm").addEventListener("submit", async e => {
       paused: false
     });
     $("name").value = "";
-    $("cycleCount").value = "";
+    $("cycleCount").value = "1";
     $("cycleUnit").value = "w";
     $("cycleMonth").hidden = true;
     for (const f of FRAMES) $(`add-${f.key}`).value = "";
@@ -1053,17 +1089,68 @@ $("addForm").addEventListener("submit", async e => {
   } catch (err) {
     console.error(err);
     msg.textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
+  } finally {
+    btn.disabled = false;
   }
 });
 
 // ===== このiPhoneを通知の送り先として登録する =====
 const VAPID_KEY = "BE5Px2M0nWrz-UNpxzih6EGRHREyaPcbtqCem47Psv_I2e5SGRF3_pkJUKluVO9rvrZefhnIR3NIwEQFjxwEZZ4";
+const TOKEN_KEY = "housework_push_token";
+const TOKEN_DAY_KEY = "housework_push_day";
+
+function pushReady() {
+  return "Notification" in window && "serviceWorker" in navigator && firebase.messaging.isSupported();
+}
+
+// 通知の送り先（この端末）を登録する。トークンが入れ替わっても追いつけるよう、毎回取り直す
+async function registerDevice() {
+  const reg = await navigator.serviceWorker.register("./firebase-messaging-sw.js");
+  const token = await firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+  if (!token) return null;
+  const old = localStorage.getItem(TOKEN_KEY);
+  if (old && old !== token) {
+    try { await db.collection("housework_devices").doc(old).delete(); } catch (e) { console.error(e); }
+  }
+  await db.collection("housework_devices").doc(token).set({ token, updatedAt: new Date().toISOString() });
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(TOKEN_DAY_KEY, fmt(today()));
+  } catch (e) { console.error(e); }
+  return token;
+}
+
+// 通知を許可済みなら、1日1回だけ登録を新しくする（何も表示しない）
+async function refreshDevice() {
+  try {
+    if (!pushReady() || Notification.permission !== "granted") return;
+    if (localStorage.getItem(TOKEN_DAY_KEY) === fmt(today())) return;
+    await registerDevice();
+  } catch (e) { console.error(e); }
+}
+
+// ログアウトするときは、この端末への通知も止める
+// （電波がないときに待ち続けないよう、3秒で先に進む）
+async function unregisterDevice() {
+  const work = (async () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) await db.collection("housework_devices").doc(token).delete();
+    if (pushReady() && Notification.permission === "granted") await firebase.messaging().deleteToken();
+  })();
+  try {
+    await Promise.race([work, new Promise(r => setTimeout(r, 3000))]);
+  } catch (e) { console.error(e); }
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_DAY_KEY);
+  } catch (e) { console.error(e); }
+}
 
 $("pushBtn").addEventListener("click", async () => {
   const msg = $("pushMsg");
   msg.textContent = "";
   try {
-    if (!("Notification" in window) || !("serviceWorker" in navigator) || !firebase.messaging.isSupported()) {
+    if (!pushReady()) {
       msg.textContent = "この画面では通知を使えません。ホーム画面のアイコンから開いてください。";
       return;
     }
@@ -1073,14 +1160,12 @@ $("pushBtn").addEventListener("click", async () => {
       msg.textContent = "通知が許可されませんでした。設定アプリから許可できます。";
       return;
     }
-    const reg = await navigator.serviceWorker.register("./firebase-messaging-sw.js");
-    const token = await firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    const token = await registerDevice();
     if (!token) {
       msg.textContent = "登録できませんでした。もう一度押してください。";
       return;
     }
-    await db.collection("housework_devices").doc(token).set({ token, updatedAt: new Date().toISOString() });
-    msg.textContent = "このiPhoneで通知を受け取れるようになりました。";
+    msg.textContent = "この端末で通知を受け取れるようになりました。";
   } catch (err) {
     console.error(err);
     msg.textContent = "登録できませんでした。ホーム画面から開き直して、もう一度押してください。";
@@ -1107,16 +1192,38 @@ $("loginForm").addEventListener("submit", async e => {
   }
 });
 
-$("logoutBtn").addEventListener("click", () => auth.signOut());
+$("logoutBtn").addEventListener("click", async () => {
+  if (!confirm("ログアウトしますか？\nこの端末には通知が届かなくなります。")) return;
+  await unregisterDevice();
+  await auth.signOut();
+});
+
+// アプリを開いたまま日付が変わっても、戻ってきたときに状態と日数を出し直す
+let shownDay = fmt(today());
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !auth.currentUser) return;
+  const d = fmt(today());
+  if (d === shownDay) return;
+  shownDay = d;
+  $("lastDone").value = d;
+  $("lastDone").max = d;
+  checkNotices();
+  render();
+  if (currentId) renderDetail();
+  refreshDevice();
+});
 
 buildSettings();
 $("appVer").textContent = `v${APP_VERSION}`;
+$("loginVer").textContent = `v${APP_VERSION}`;
 
 auth.onAuthStateChanged(async user => {
   if (user) {
     showView("list");
     $("lastDone").value = fmt(today());
+    $("lastDone").max = fmt(today());
     if (!unsubscribe) startListening();
+    refreshDevice();
     for (const f of FRAMES) {
       if (!frameState[f.key].unsub) startFrame(f);
     }

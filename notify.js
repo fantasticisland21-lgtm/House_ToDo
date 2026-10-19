@@ -66,6 +66,7 @@ function nextYearlyUTC(afterMs, month, day) {
 // アプリ本体と同じ判定：1周期後で「そろそろ」、2周期後で「やばい」
 function judge(item, t) {
   if (item.paused) return "paused";
+  if (!(item.startDate || item.lastDone)) return "normal"; // 日付がない古いデータは通常扱い
   const base = parse(item.startDate || item.lastDone);
   if (item.cycleUnit === "f" || item.cycleUnit === "fy") {
     // 毎月・毎年：実施日に関係なく、決まった日が期日になる
@@ -91,47 +92,56 @@ async function main() {
   const devSnap = await db.collection("housework_devices").get();
   const tokens = devSnap.docs.map(d => d.data().token).filter(Boolean);
   let sent = 0;
+  const dead = new Set(); // 無効になった端末の登録
 
   for (const doc of itemsSnap.docs) {
-    const it = doc.data();
-    const key = judge(it, t);
-    const seen = it.notifiedKey || "normal";
+    // 1件でエラーが出ても、ほかの項目の通知は続ける
+    try {
+      const it = doc.data();
+      const key = judge(it, t);
+      const seen = it.notifiedKey || "normal";
 
-    // 通常か一時停止中なら、次に変わったときに知らせられるよう印を戻す
-    if (key === "normal" || key === "paused") {
-      if (seen !== "normal") await doc.ref.update({ notifiedKey: "normal" });
-      continue;
+      // 通常か一時停止中なら、次に変わったときに知らせられるよう印を戻す
+      if (key === "normal" || key === "paused") {
+        if (seen !== "normal") await doc.ref.update({ notifiedKey: "normal" });
+        continue;
+      }
+
+      // 同じ状態で知らせ済みなら何もしない
+      if (seen === key) continue;
+
+      let ok = 0; // 実際に届いた数（0なら、知らせ済みにしない）
+      if (tokens.length) {
+        const res = await messaging.sendEachForMulticast({
+          tokens,
+          data: {
+            title: `${key === "danger" ? "🔴" : "🟡"} ${it.name}`,
+            body: `${LABEL[key]}になりました`,
+            url: APP_URL
+          }
+        });
+        sent += res.successCount;
+        ok = res.successCount;
+
+        // 無効になった端末の登録は削除する
+        res.responses.forEach((r, i) => {
+          const code = r.error && r.error.code;
+          if (!r.success && (code === "messaging/registration-token-not-registered" ||
+                             code === "messaging/invalid-registration-token")) {
+            dead.add(tokens[i]);
+          }
+        });
+      }
+
+      // 知らせた状態を保存して、次回の重複を防ぐ
+      if (ok > 0) await doc.ref.update({ notifiedKey: key });
+    } catch (err) {
+      console.error(`項目 ${doc.id} でエラー:`, err);
     }
-
-    // 同じ状態で知らせ済みなら何もしない
-    if (seen === key) continue;
-
-    let ok = 0; // 実際に届いた数（0なら、知らせ済みにしない）
-    if (tokens.length) {
-      const res = await messaging.sendEachForMulticast({
-        tokens,
-        data: {
-          title: `${key === "danger" ? "🔴" : "🟡"} ${it.name}`,
-          body: `${LABEL[key]}になりました`,
-          url: APP_URL
-        }
-      });
-      sent += res.successCount;
-      ok = res.successCount;
-
-      // 無効になった端末の登録は削除する
-      res.responses.forEach((r, i) => {
-        const code = r.error && r.error.code;
-        if (!r.success && (code === "messaging/registration-token-not-registered" ||
-                           code === "messaging/invalid-registration-token")) {
-          db.collection("housework_devices").doc(tokens[i]).delete();
-        }
-      });
-    }
-
-    // 知らせた状態を保存して、次回の重複を防ぐ
-    if (ok > 0) await doc.ref.update({ notifiedKey: key });
   }
+
+  // 無効になった端末の登録を、最後まで消し終えてから終わる
+  await Promise.all([...dead].map(t => db.collection("housework_devices").doc(t).delete()));
   console.log(`送信した通知の数: ${sent}`);
 }
 
