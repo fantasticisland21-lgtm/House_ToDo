@@ -89,6 +89,51 @@ function judge(item, t) {
   return "normal";
 }
 
+// 日本時間の「時」（0〜23）
+function hourJST() {
+  return Number(new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo", hour: "numeric", hourCycle: "h23"
+  }).format(new Date()));
+}
+
+// 送信結果から、無効になった端末の登録を集める
+function collectDead(res, tokens, dead) {
+  res.responses.forEach((r, i) => {
+    const code = r.error && r.error.code;
+    if (!r.success && (code === "messaging/registration-token-not-registered" ||
+                       code === "messaging/invalid-registration-token")) {
+      dead.add(tokens[i]);
+    }
+  });
+}
+
+// 夜：まだ残っている「やばい」「そろそろ」の項目を、1通にまとめて知らせる
+async function sendSummary(itemsSnap, tokens, t, dead) {
+  const groups = { danger: [], soon: [] };
+  for (const doc of itemsSnap.docs) {
+    try {
+      const it = doc.data();
+      const key = judge(it, t);
+      if (groups[key]) groups[key].push(it.name);
+    } catch (err) {
+      console.error(`項目 ${doc.id} でエラー:`, err);
+    }
+  }
+  const total = groups.danger.length + groups.soon.length;
+  if (!total || !tokens.length) return 0;
+  const parts = [];
+  if (groups.danger.length) parts.push(`やばい：${groups.danger.join("、")}`);
+  if (groups.soon.length) parts.push(`そろそろ：${groups.soon.join("、")}`);
+  let body = parts.join("\n");
+  if (body.length > 150) body = body.slice(0, 149) + "…";
+  const res = await messaging.sendEachForMulticast({
+    tokens,
+    data: { title: `残っているやること ${total}件`, body, url: APP_URL }
+  });
+  collectDead(res, tokens, dead);
+  return res.successCount;
+}
+
 async function main() {
   const t = todayJST();
   const itemsSnap = await db.collection("housework_items").get();
@@ -96,6 +141,14 @@ async function main() {
   const tokens = devSnap.docs.map(d => d.data().token).filter(Boolean);
   let sent = 0;
   const dead = new Set(); // 無効になった端末の登録
+
+  // 午後（夜8時の回）は、まとめの通知だけを送る。朝の回は、状態が変わった項目を1件ずつ知らせる
+  if (hourJST() >= 15) {
+    sent = await sendSummary(itemsSnap, tokens, t, dead);
+    await Promise.all([...dead].map(tk => db.collection("housework_devices").doc(tk).delete()));
+    console.log(`まとめの通知を送った数: ${sent}`);
+    return;
+  }
 
   for (const doc of itemsSnap.docs) {
     // 1件でエラーが出ても、ほかの項目の通知は続ける
@@ -127,13 +180,7 @@ async function main() {
         ok = res.successCount;
 
         // 無効になった端末の登録は削除する
-        res.responses.forEach((r, i) => {
-          const code = r.error && r.error.code;
-          if (!r.success && (code === "messaging/registration-token-not-registered" ||
-                             code === "messaging/invalid-registration-token")) {
-            dead.add(tokens[i]);
-          }
-        });
+        collectDead(res, tokens, dead);
       }
 
       // 知らせた状態を保存して、次回の重複を防ぐ
