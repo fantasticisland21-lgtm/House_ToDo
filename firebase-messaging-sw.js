@@ -16,7 +16,7 @@ const messaging = firebase.messaging();
 // データだけで届くので、ここで1回だけ通知を表示する
 messaging.onBackgroundMessage(payload => {
   const d = payload.data || {};
-  self.registration.showNotification(d.title || "やることリスト", {
+  self.registration.showNotification(d.title || "Home To Do", {
     body: d.body || "",
     data: { url: d.url || "./" }
   });
