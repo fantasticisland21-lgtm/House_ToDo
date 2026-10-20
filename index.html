@@ -305,7 +305,7 @@ db.enablePersistence({ synchronizeTabs: true }).catch(err => console.error(err))
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.11";             // 変更するたびに上げる
+const APP_VERSION = "2.12";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -910,6 +910,8 @@ $("doneBtn").addEventListener("click", async () => {
     // 履歴のIDを「項目_日付」にして、同じ日に2回押しても1件にする
     batch.set(db.collection(HIST).doc(`${it.id}_${dateStr}`), { itemId: it.id, date: dateStr });
     await batch.commit();
+    closeDetail(); // 保存できたら、一覧に戻る
+    window.scrollTo(0, 0);
   } catch (err) {
     console.error(err);
     $("detailMsg").textContent = "保存できませんでした。通信状態を確認して、もう一度押してください。";
