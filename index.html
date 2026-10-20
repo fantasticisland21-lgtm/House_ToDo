@@ -305,7 +305,7 @@ db.enablePersistence({ synchronizeTabs: true }).catch(err => console.error(err))
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.12";             // 変更するたびに上げる
+const APP_VERSION = "2.13";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -347,7 +347,7 @@ function addPeriod(base, unit, count) {
 // 毎月○日の項目の、次の期日と残り日数
 function dueInfo(it) {
   if (!(it.startDate || it.lastDone)) return { due: today(), left: 0 };
-  const due = firstDue(it, parse(it.startDate || it.lastDone));
+  const due = nextDue(it, parse(it.startDate || it.lastDone));
   const left = Math.round((due - today()) / DAY);
   return { due, left };
 }
@@ -363,12 +363,13 @@ function isFixed(it) {
   return it.cycleUnit === "f" || it.cycleUnit === "fy";
 }
 
-// 毎月・毎年の項目の「今回の期日」。期日の近く（周期の半分以内）より前に実施していたら、
-// その回は済んだものとして、次の回を期日にする
+// 毎月・毎年の項目で「実施した」を押したとき、期日の近く（周期の半分以内）なら、
+// その回は済んだものとして、計測開始日をその期日にする（次の期日は、その次の回になる）
 const EARLY_DAYS = { f: 15, fy: 183 };
-function firstDue(it, base) {
-  const d = nextDue(it, base);
-  return Math.round((d - base) / DAY) < EARLY_DAYS[it.cycleUnit] ? nextDue(it, d) : d;
+function doneStartDate(it, t) {
+  if (!isFixed(it)) return fmt(t);
+  const d = nextDue(it, new Date(t.getFullYear(), t.getMonth(), t.getDate() - 1)); // 今日が期日なら今日
+  return Math.round((d - t) / DAY) < EARLY_DAYS[it.cycleUnit] ? fmt(d) : fmt(t);
 }
 
 // 毎月○日・毎年○月○日の、基準日より後の次の期日
@@ -413,13 +414,13 @@ function judge(item) {
   let next1, next2;
   if (isFixed(item)) {
     // 毎月・毎年：実施日に関係なく、決まった日が期日になる
-    next1 = firstDue(item, base);
+    next1 = nextDue(item, base);
     next2 = nextDue(item, next1);
   } else {
     next1 = addPeriod(base, item.cycleUnit, item.cycleCount);
     next2 = addPeriod(base, item.cycleUnit, item.cycleCount * 2);
   }
-  const days = Math.round((t - base) / DAY);
+  const days = Math.max(0, Math.round((t - base) / DAY)); // 期日を先に済ませたときは0日
   let key = "normal";
   if (t >= next2) key = "danger";
   else if (t >= next1) key = "soon";
@@ -906,7 +907,7 @@ $("doneBtn").addEventListener("click", async () => {
   const dateStr = fmt(today());
   try {
     const batch = db.batch();
-    batch.update(db.collection(COL).doc(it.id), { lastDone: dateStr, startDate: dateStr });
+    batch.update(db.collection(COL).doc(it.id), { lastDone: dateStr, startDate: doneStartDate(it, today()) });
     // 履歴のIDを「項目_日付」にして、同じ日に2回押しても1件にする
     batch.set(db.collection(HIST).doc(`${it.id}_${dateStr}`), { itemId: it.id, date: dateStr });
     await batch.commit();

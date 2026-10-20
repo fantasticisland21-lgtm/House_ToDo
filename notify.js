@@ -73,10 +73,8 @@ function judge(item, t) {
     const next = (after) => item.cycleUnit === "fy"
       ? nextYearlyUTC(after, item.cycleMonth, item.cycleCount)
       : nextFixed(after, item.cycleCount);
-    // 期日の近く（周期の半分以内）より前に実施していたら、その回は済みにする（アプリと同じ）
-    const first = next(base);
-    const early = item.cycleUnit === "fy" ? 183 : 15;
-    const d1 = Math.round((first - base) / 86400000) < early ? next(first) : first;
+    // 期日を先に済ませたときは、アプリ側で計測開始日がその期日になっている
+    const d1 = next(base);
     const d2 = next(d1);
     if (t >= d2) return "danger";
     if (t >= d1) return "soon";
