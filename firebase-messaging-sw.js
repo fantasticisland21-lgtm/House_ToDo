@@ -6,13 +6,29 @@ self.addEventListener("push", event => {
   let p = {};
   try { p = event.data ? event.data.json() : {}; } catch (e) { p = {}; }
   const d = p.data || p.notification || {};
-  event.waitUntil(
+  event.waitUntil(Promise.all([
     self.registration.showNotification(d.title || "Home To Do", {
       body: d.body || "",
       data: { url: d.url || "./" }
-    })
-  );
+    }),
+    setBadge(d.badge)
+  ]));
 });
+
+// ホーム画面のアイコンのバッジ（「そろそろ」「やばい」の件数）を、通知が届いたときに合わせる。
+// アプリを閉じていても数字が変わる。件数が入っていない通知では何もしない
+async function setBadge(value) {
+  try {
+    if (value === undefined || value === null || value === "") return;
+    if (!("setAppBadge" in self.navigator)) return;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return;
+    if (n > 0) await self.navigator.setAppBadge(n);
+    else await self.navigator.clearAppBadge();
+  } catch (e) {
+    console.error(e);
+  }
+}
 
 importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js");

@@ -305,7 +305,7 @@ db.enablePersistence({ synchronizeTabs: true }).catch(err => console.error(err))
 const COL = "housework_items";         // 項目
 const HIST = "housework_history";      // 実施履歴（{ itemId, date }）
 const SETTINGS = "housework_settings"; // 初期データを入れたかどうかの印
-const APP_VERSION = "2.13";             // 変更するたびに上げる
+const APP_VERSION = "2.14";             // 変更するたびに上げる
 
 // 項目に付ける「枠」。カテゴリと対象は別々に管理する
 const FRAMES = [
@@ -623,8 +623,29 @@ function buildSettings() {
   }
 }
 
+// ===== ホーム画面のアイコンのバッジ =====
+// 「そろそろ」「やばい」の件数をアイコンに出す（一時停止中は数えない）。
+// 0件なら消す。通知を許可していないとiPhoneでは表示されない
+function setIconBadge(n) {
+  try {
+    if (!("setAppBadge" in navigator)) return;
+    const p = n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge();
+    if (p && p.catch) p.catch(e => console.error(e));
+  } catch (e) { console.error(e); }
+}
+
+function updateIconBadge() {
+  const n = items.filter(it => {
+    if (it.paused) return false;
+    const { key } = judge(it);
+    return key === "soon" || key === "danger";
+  }).length;
+  setIconBadge(n);
+}
+
 // ===== 一覧の表示 =====
 function render() {
+  updateIconBadge();
   const list = $("list");
   list.textContent = "";
   if (!items.length) {
@@ -712,6 +733,7 @@ function stopListening() {
   unsubscribe = null;
   items = [];
   $("list").textContent = "";
+  setIconBadge(0); // ログアウトしたらバッジも消す
 }
 
 // ===== お知らせ（アプリを開いたときに、状態が変わった項目を知らせる） =====
@@ -1241,6 +1263,7 @@ $("logoutBtn").addEventListener("click", async () => {
 let shownDay = fmt(today());
 document.addEventListener("visibilitychange", () => {
   if (document.hidden || !auth.currentUser) return;
+  if (unsubscribe) updateIconBadge(); // 画面に戻るたびにバッジの件数を合わせ直す
   const d = fmt(today());
   if (d === shownDay) return;
   shownDay = d;

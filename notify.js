@@ -126,7 +126,7 @@ async function sendSummary(itemsSnap, tokens, t, dead) {
   if (body.length > 150) body = body.slice(0, 149) + "…";
   const res = await messaging.sendEachForMulticast({
     tokens,
-    data: { title: `残っているやること ${total}件`, body, url: APP_URL }
+    data: { title: `残っているやること ${total}件`, body, url: APP_URL, badge: String(total) }
   });
   collectDead(res, tokens, dead);
   return res.successCount;
@@ -139,6 +139,17 @@ async function main() {
   const tokens = devSnap.docs.map(d => d.data().token).filter(Boolean);
   let sent = 0;
   const dead = new Set(); // 無効になった端末の登録
+
+  // ホーム画面のアイコンに出す件数（「そろそろ」「やばい」の合計。一時停止中は数えない）
+  let badgeCount = 0;
+  for (const doc of itemsSnap.docs) {
+    try {
+      const key = judge(doc.data(), t);
+      if (key === "danger" || key === "soon") badgeCount++;
+    } catch (err) {
+      console.error(`項目 ${doc.id} でエラー:`, err);
+    }
+  }
 
   // 午後（夜8時の回）は、まとめの通知だけを送る。朝の回は、状態が変わった項目を1件ずつ知らせる
   if (hourJST() >= 15) {
@@ -171,7 +182,8 @@ async function main() {
           data: {
             title: it.name,
             body: `${LABEL[key]}になりました`,
-            url: APP_URL
+            url: APP_URL,
+            badge: String(badgeCount)
           }
         });
         sent += res.successCount;
